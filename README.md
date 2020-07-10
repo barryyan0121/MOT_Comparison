@@ -92,7 +92,6 @@ Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，�
 #### 检测
 1. 读取当前帧目标检测框的位置及各检测框图像块的深度特征(此处在处理实际使用时需要自己来提取)
 1. 根据置信度对检测框进行过滤，即对置信度不足够高的检测框及特征予以删除
-1. 对检测框进行非最大值抑制，消除一个目标身上多个框的情况
 ```python
 def create_detections(detection_mat, frame_idx, min_height=0):
     frame_indices = detection_mat[:, 0].astype(np.int)
@@ -105,6 +104,14 @@ def create_detections(detection_mat, frame_idx, min_height=0):
             continue
         detection_list.append(Detection(bbox, confidence, feature))
     return detection_list
+```
+
+1. 对检测框进行非最大值抑制，消除一个目标身上多个框的情况
+```python
+# Load image and generate detections
+detections = create_detections(
+seq_info["detections"], frame_idx, min_detection_height)
+detections = [d for d in detections if d.confidence >= min_confidence]
 ```
 使用Yolo作为检测器，检测当前帧中的bbox
 #### 生成detections
