@@ -48,32 +48,46 @@ DeepSORT对每一帧的处理流程如下：
 
 传统的解决检测结果与追踪预测结果的关联的方法是使用匈牙利方法。本文作者同时考虑了运动信息的关联和目标外观信息的关联。
 
-运动信息的关联：使用了对已存在的运动目标的运动状态的kalman预测结果与检测结果之间的马氏距离进行运行信息的关联。
-<img src="https://render.githubusercontent.com/render/math?math={d_{i,j}^{(1)}} = \left ( d_{j} - y_{i} \right )^{T} S_{i}^{-1}\left ( d_{j} - y_{i} \right )">，<img src="https://render.githubusercontent.com/render/math?math=d_{j}">表示第j个检测框的位置，<img src="https://render.githubusercontent.com/render/math?math=y_{i}">表示第i个追踪器对目标的预测位置，<img src="https://render.githubusercontent.com/render/math?math=S_{i}">表示检测位置与平均追踪位置之间的协方差矩阵。马氏距离通过计算检测位置和平均追踪位置之间的标准差将状态测量的不确定性进行了考虑。<br>
-如果某次关联的马氏距离小于指定的阈值<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}">，则设置运动状态的关联成功。使用的函数为<img src="https://render.githubusercontent.com/render/math?math={b_{i,j}^{(1)}} = \mathbb{I}\left [ {d_{i,j}^{(1)}} \leqslant t^{(1)} \right ]">，作者设置<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}=9.4877">
+运动信息的关联：使用了对已存在的运动目标的运动状态的kalman预测结果与检测结果之间的马氏距离进行运行信息的关联。<br>
+<img src="https://render.githubusercontent.com/render/math?math={d_{i,j}^{(1)}} = \left ( d_{j} - y_{i} \right )^{T} S_{i}^{-1}\left ( d_{j} - y_{i} \right )">，<br><img src="https://render.githubusercontent.com/render/math?math=d_{j}">表示第j个检测框的位置，<img src="https://render.githubusercontent.com/render/math?math=y_{i}">表示第i个追踪器对目标的预测位置，<img src="https://render.githubusercontent.com/render/math?math=S_{i}">表示检测位置与平均追踪位置之间的协方差矩阵。马氏距离通过计算检测位置和平均追踪位置之间的标准差将状态测量的不确定性进行了考虑。<br>
+如果某次关联的马氏距离小于指定的阈值<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}">，则设置运动状态的关联成功。使用的函数为<br><img src="https://render.githubusercontent.com/render/math?math={b_{i,j}^{(1)}} = \mathbb{I}\left [ {d_{i,j}^{(1)}} \leqslant t^{(1)} \right ]">，作者设置<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}=9.4877">。
 
-目标外观信息的关联：当运动的不确定性很低的时候，上述的马氏距离匹配是一个合适的关联度量方法，但是在图像空间中使用kalman滤波进行运动状态估计只是一个比较粗糙的预测。特别是相机存在运动时会使得马氏距离的关联方法失效，造成出现ID switch的现象。因此引入了第二种关联方法，对每一个的检测块<img src="https://render.githubusercontent.com/render/math?math=d_{j}">求一个特征向量<img src="https://render.githubusercontent.com/render/math?math=r_{i}">，限制条件是<img src="https://render.githubusercontent.com/render/math?math=\left \| r_{i} \right \| = 1">。作者对每一个追踪目标构建一个gallary，存储每一个追踪目标成功关联的最近100帧的特征向量。那么第二种度量方式就是计算第i个追踪器的最近100个成功关联的特征集与当前帧第j个检测结果的特征向量间的最小余弦距离。计算公式为：<img src="https://render.githubusercontent.com/render/math?math=d^{(2)}(i,j)=min\left \{ r_{j}^{T}r_{k}^{(i)} | r_{k}^{(i)}\in R_{i}\right \}"><br>
+目标外观信息的关联：当运动的不确定性很低的时候，上述的马氏距离匹配是一个合适的关联度量方法，但是在图像空间中使用卡尔曼滤波进行运动状态估计只是一个比较粗糙的预测。特别是相机存在运动时会使得马氏距离的关联方法失效，造成出现ID switch的现象。因此引入了第二种关联方法，对每一个的检测块<img src="https://render.githubusercontent.com/render/math?math=d_{j}">求一个特征向量<img src="https://render.githubusercontent.com/render/math?math=r_{i}">，限制条件是<img src="https://render.githubusercontent.com/render/math?math=\left \| r_{i} \right \| = 1">。作者对每一个追踪目标构建一个gallary，存储每一个追踪目标成功关联的最近100帧的特征向量。那么第二种度量方式就是计算第i个追踪器的最近100个成功关联的特征集与当前帧第j个检测结果的特征向量间的最小余弦距离。计算公式为：<br><img src="https://render.githubusercontent.com/render/math?math=d^{(2)}(i,j)=min\left \{ r_{j}^{T}r_{k}^{(i)} | r_{k}^{(i)}\in R_{i}\right \}"><br>
 如果上面的距离小于指定的阈值，那么这个关联就是成功的。阈值是从单独的训练集里得到的。
 
 使用两种度量方式的线性加权作为最终的度量，<br><img src="https://render.githubusercontent.com/render/math?math=c_{i,j} = \lambda d^{(1)}(i,j) + (1-\lambda)d^{(2)}(i,j)">，只有<img src="https://render.githubusercontent.com/render/math?math=c_{i,j}">位于两种度量阈值的交集时，才认为实现了正确的关联。<br>
 距离度量对短期的预测和匹配效果很好，但对于长时间的遮挡的情况，使用外观特征的度量比较有效。对于存在相机运动的情况，可以设置<img src="https://render.githubusercontent.com/render/math?math=\lambda = 0">。
 
-Frame 0：检测器检测到了3个detections，当前没有任何tracks，将这3个detections初始化为tracks
 
-Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，先进行预测得到新的tracks，然后使用匈牙利算法将新的tracks与detections进行匹配，得到(track, detection)匹配对，最后用每对中的detection更新对应的track
 
 **级联匹配**(Matching Cascade)是核心，DeepSORT的绝大多数创新点都在这里面。
+![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
 
-当一个目标长时间被遮挡之后，卡尔曼滤波预测的不确定性就会大大增加，状态空间内的可观察性就会大大降低。假如此时两个追踪器竞争同一个检测结果的匹配权，往往遮挡时间较长的那条轨迹因为长时间未更新位置信息，追踪预测位置的不确定性更大，即协方差会更大，**马氏距离**计算时使用了协方差的倒数，因此**马氏距离**会更小，因此使得检测结果更可能和遮挡时间较长的那条轨迹相关联，这种不理想的效果往往会破坏追踪的持续性。
+当一个目标长时间被遮挡之后，卡尔曼滤波预测的不确定性就会大大增加，状态空间内的可观察性就会大大降低。假如此时两个追踪器竞争同一个检测结果的匹配权，往往遮挡时间较长的那条轨迹因为长时间未更新位置信息，追踪预测位置的不确定性更大，即协方差会更大，**马氏距离**计算时使用了协方差的倒数，因此**马氏距离**会更小，因此使得检测结果更可能和遮挡时间较长的那条轨迹相关联，这种不理想的效果往往会破坏追踪的持续性。因为相机抖动明显，卡尔曼预测所基于的匀速运动模型并不准确，所以**马氏距离**其实并没有什么作用，主要是通过阈值矩阵(Gate Matrix)对代价矩阵(Cost Matrix)做了一次阈值限制。
+
+级联匹配的核心思想就是由小到大对消失时间相同的轨迹进行匹配，这样首先保证了对最近出现的目标赋予最大的优先权，也解决了上面所述的问题。
+
+![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
 
 **级联匹配**流程图里上半部分就是特征提取和相似度估计，也就是算这个分配问题的代价函数。主要由两部分组成：代表运动模型的**马氏距离**和代表外观模型的**Re-ID**特征。
 
 **级联匹配**流程图里下半部分数据关联作为流程的主体。为什么叫级联匹配，主要是它的匹配过程是一个循环。从missing age = 0的轨迹（即每一帧都匹配上，没有丢失过的）到missing age = 30的轨迹（即丢失轨迹的最大时间30帧）挨个的和检测结果进行匹配。也就是说，对于没有丢失过的轨迹赋予优先匹配的权利，而丢失的最久的轨迹最后匹配。
 
-因为相机抖动明显，卡尔曼预测所基于的匀速运动模型并不准确，所以**马氏距离**其实并没有什么作用，主要是通过阈值矩阵(Gate Matrix)对代价矩阵(Cost Matrix)做了一次阈值限制。
+在匹配的最后阶段还对unconfirmed和age=1的未匹配轨迹和检测目标进行基于IoU的匹配。这可以缓解因为表观突变或者部分遮挡导致的较大变化。当然有好处就有坏处，这样做也有可能导致一些新产生的轨迹被连接到了一些旧的轨迹上。但这种情况较少。
 
-<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}=9.4877"><br>
-关于为什么新轨迹要连续三帧命中才确认？个人认为有这样严格的条件和测试集有关系。因为测试集给的检测输入非常的差，误检有很多，因此轨迹的产生必须要更严格的条件。
+工作流程示例：
+```
+Frame 0：检测器检测到了3个detections，当前没有任何tracks，将这3个detections初始化为tracks。
+
+Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，先进行预测得到新的tracks，然后使用匈牙利算法将新的tracks与detections进行匹配，得到(track, detection)匹配对，最后用每对中的detection更新对应的track。
+```
+
+深度特征描述器
+网络结构：
+![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+在行人重识别数据集上离线训练残差网络模型。输出128维的归一化的特征。
+
+
 
 ### 代码解读
 #### 检测
