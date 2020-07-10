@@ -25,21 +25,19 @@
 ### 导语
 DeepSort是在Sort目标追踪基础上的改进。引入了在行人重识别数据集上离线训练的深度学习模型，在实时目标追踪过程中，提取目标的表观特征进行最近邻匹配，可以改善有遮挡情况下的目标追踪效果。同时，也减少了目标ID跳变的问题。算法的核心思想还是用一个传统的单假设追踪方法，方法使用了递归的卡尔曼滤波和逐帧的数据关联。为了学习DeepSORT，我们首先需要了解SORT原理。
 ### SORT(SIMPLE ONLINE AND REALTIME TRACKING)原理
-![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/SORT.jpg)<br>
 SORT作为一个粗略的框架，核心就是两个算法：**卡尔曼滤波**和**匈牙利匹配**。
 
 **卡尔曼滤波**分为两个过程：预测(predict)和更新(update)。预测过程：当一个小车经过移动后，且其初始定位和移动过程都是高斯分布时，则最终估计位置分布会更分散，即更不准确；更新过程：当一个小车经过传感器观测定位，且其初始定位和观测都是高斯分布时，则观测后的位置分布会更集中，即更准确。
 
 **匈牙利算法**解决的是一个分配问题。SK-learn库的linear_assignment和scipy库的linear_sum_assignment都实现了这一算法，只需要输入cost_matrix即代价矩阵就能得到最优匹配。不过要注意的是这两个库函数虽然算法一样,但给的输出格式不同。此代码使用的是SK-learn库的linear_assignment。
 
-DeepSORT的优化主要就是基于匈牙利算法里的这个代价矩阵。它在IOU Matching之前做了一次额外的级联匹配，利用了外观特征和马氏距离。
-
 SORT流程整体可以拆分为两个部分，分别是匹配过程和卡尔曼预测加更新过程。
 
 关键步骤：轨迹卡尔曼滤波**预测** → 使用**匈牙利算法**将预测后的tracks和当前帧中的detecions进行匹配(**IOU匹配**) → 卡尔曼滤波**更新**
 
 ### DeepSORT原理
-![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/DeepSORT.jpg)<br>
 DeepSORT算法和SORT基本一样，就多了**级联匹配**(Matching Cascade)和新轨迹的确认(confirmed)。
 
 DeepSORT对每一帧的处理流程如下：
@@ -48,8 +46,8 @@ DeepSORT对每一帧的处理流程如下：
 
 关键步骤：轨迹卡尔曼滤波预测 → 使用**匈牙利算法**将预测后的tracks和当前帧中的detections进行匹配(**级联匹配**和**IOU匹配**) → 卡尔曼滤波**更新**
 
-传统的解决检测结果与追踪预测结果的关联的方法是使用匈牙利方法。本文作者同时考虑了运动信息的关联和目标外观信息的关联。
-
+传统的解决检测结果与追踪预测结果的关联的方法是使用**匈牙利算法**。本文作者同时考虑了运动信息的关联和目标外观信息的关联。
+DeepSORT的优化主要就是基于**匈牙利算法**里的这个代价矩阵。它在IOU Matching之前做了一次额外的级联匹配，利用了外观特征和**马氏距离**。
 运动信息的关联：使用了对已存在的运动目标的运动状态的kalman预测结果与检测结果之间的马氏距离进行运行信息的关联。<br>
 <img src="https://render.githubusercontent.com/render/math?math={d_{i,j}^{(1)}} = \left ( d_{j} - y_{i} \right )^{T} S_{i}^{-1}\left ( d_{j} - y_{i} \right )">，<br><img src="https://render.githubusercontent.com/render/math?math=d_{j}">表示第j个检测框的位置，<img src="https://render.githubusercontent.com/render/math?math=y_{i}">表示第i个追踪器对目标的预测位置，<img src="https://render.githubusercontent.com/render/math?math=S_{i}">表示检测位置与平均追踪位置之间的协方差矩阵。马氏距离通过计算检测位置和平均追踪位置之间的标准差将状态测量的不确定性进行了考虑。<br>
 如果某次关联的马氏距离小于指定的阈值<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}">，则设置运动状态的关联成功。使用的函数为<br><img src="https://render.githubusercontent.com/render/math?math={b_{i,j}^{(1)}} = \mathbb{I}\left [ {d_{i,j}^{(1)}} \leqslant t^{(1)} \right ]">，作者设置<img src="https://render.githubusercontent.com/render/math?math=t^{(1)}=9.4877">。
@@ -63,13 +61,13 @@ DeepSORT对每一帧的处理流程如下：
 
 
 **级联匹配**(Matching Cascade)是核心，DeepSORT的绝大多数创新点都在这里面。
-![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/matching%20cascade%20step.png)
 
 当一个目标长时间被遮挡之后，卡尔曼滤波预测的不确定性就会大大增加，状态空间内的可观察性就会大大降低。假如此时两个追踪器竞争同一个检测结果的匹配权，往往遮挡时间较长的那条轨迹因为长时间未更新位置信息，追踪预测位置的不确定性更大，即协方差会更大，**马氏距离**计算时使用了协方差的倒数，因此**马氏距离**会更小，因此使得检测结果更可能和遮挡时间较长的那条轨迹相关联，这种不理想的效果往往会破坏追踪的持续性。因为相机抖动明显，卡尔曼预测所基于的匀速运动模型并不准确，所以**马氏距离**其实并没有什么作用，主要是通过阈值矩阵(Gate Matrix)对代价矩阵(Cost Matrix)做了一次阈值限制。
 
 级联匹配的核心思想就是由小到大对消失时间相同的轨迹进行匹配，这样首先保证了对最近出现的目标赋予最大的优先权，也解决了上面所述的问题。
 
-![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/matching_cascade.jpg)
 
 **级联匹配**流程图里上半部分就是特征提取和相似度估计，也就是算这个分配问题的代价函数。主要由两部分组成：代表运动模型的**马氏距离**和代表外观模型的**Re-ID**特征。
 
@@ -84,9 +82,9 @@ Frame 0：检测器检测到了3个detections，当前没有任何tracks，将�
 Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，先进行预测得到新的tracks，然后使用匈牙利算法将新的tracks与detections进行匹配，得到(track, detection)匹配对，最后用每对中的detection更新对应的track。
 ```
 
-深度特征描述器
-网络结构：
-![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
+深度特征描述器<br>
+网络结构：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/cnn.png)<br>
 在行人重识别数据集上离线训练残差网络模型。输出128维的归一化的特征。
 
 
