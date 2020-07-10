@@ -25,6 +25,7 @@
 ### 导语
 DeepSort是在Sort目标追踪基础上的改进。引入了在行人重识别数据集上离线训练的深度学习模型，在实时目标追踪过程中，提取目标的表观特征进行最近邻匹配，可以改善有遮挡情况下的目标追踪效果。同时，也减少了目标ID跳变的问题。算法的核心思想还是用一个传统的单假设追踪方法，方法使用了递归的卡尔曼滤波和逐帧的数据关联。为了学习DeepSORT，我们首先需要了解SORT原理。
 ### SORT(SIMPLE ONLINE AND REALTIME TRACKING)原理
+![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
 SORT作为一个粗略的框架，核心就是两个算法：**卡尔曼滤波**和**匈牙利匹配**。
 
 **卡尔曼滤波**分为两个过程：预测(predict)和更新(update)。预测过程：当一个小车经过移动后，且其初始定位和移动过程都是高斯分布时，则最终估计位置分布会更分散，即更不准确；更新过程：当一个小车经过传感器观测定位，且其初始定位和观测都是高斯分布时，则观测后的位置分布会更集中，即更准确。
@@ -38,6 +39,7 @@ SORT流程整体可以拆分为两个部分，分别是匹配过程和卡尔曼�
 关键步骤：轨迹卡尔曼滤波**预测** → 使用**匈牙利算法**将预测后的tracks和当前帧中的detecions进行匹配(**IOU匹配**) → 卡尔曼滤波**更新**
 
 ### DeepSORT原理
+![Image of pic](https://github.com/barryyan0121/Camera_Calibration/blob/master/pic/pictures/20200701232511.jpg)
 DeepSORT算法和SORT基本一样，就多了**级联匹配**(Matching Cascade)和新轨迹的确认(confirmed)。
 
 DeepSORT对每一帧的处理流程如下：
