@@ -82,15 +82,30 @@ Frame 0：检测器检测到了3个detections，当前没有任何tracks，将�
 Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，先进行预测得到新的tracks，然后使用匈牙利算法将新的tracks与detections进行匹配，得到(track, detection)匹配对，最后用每对中的detection更新对应的track。
 ```
 
-深度特征描述器<br>
+**深度特征描述器**<br>
 网络结构：<br>
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/cnn.png)<br>
 在行人重识别数据集上离线训练残差网络模型。输出128维的归一化的特征。
 
-
-
 ### 代码解读
+按视频帧顺序处理，每一帧的处理流程如下:
 #### 检测
+1. 读取当前帧目标检测框的位置及各检测框图像块的深度特征(此处在处理实际使用时需要自己来提取)
+1. 根据置信度对检测框进行过滤，即对置信度不足够高的检测框及特征予以删除
+1. 对检测框进行非最大值抑制，消除一个目标身上多个框的情况
+```python
+def create_detections(detection_mat, frame_idx, min_height=0):
+    frame_indices = detection_mat[:, 0].astype(np.int)
+    mask = frame_indices == frame_idx
+
+    detection_list = []
+    for row in detection_mat[mask]:
+        bbox, confidence, feature = row[2:6], row[6], row[10:]
+        if bbox[3] < min_height:
+            continue
+        detection_list.append(Detection(bbox, confidence, feature))
+    return detection_list
+```
 使用Yolo作为检测器，检测当前帧中的bbox
 #### 生成detections
 将检测到的bbox转换成detections
