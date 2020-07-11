@@ -89,10 +89,11 @@ Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，�
 
 ### 代码解读
 按视频帧顺序处理，每一帧的处理流程如下:
-#### 检测
-1. 读取当前帧目标检测框的位置及各检测框图像块的深度特征(此处在处理实际使用时需要自己来提取)
-1. 根据置信度对检测框进行过滤，即对置信度不足够高的检测框及特征予以删除
+#### 检测并生成detections
+读取当前帧目标检测框的位置及各检测框图像块的深度特征(此处在处理实际使用时需要自己来提取)
+
 ```python
+# deep_sort_app.py
 def create_detections(detection_mat, frame_idx, min_height=0):
     frame_indices = detection_mat[:, 0].astype(np.int)
     mask = frame_indices == frame_idx
@@ -105,21 +106,178 @@ def create_detections(detection_mat, frame_idx, min_height=0):
         detection_list.append(Detection(bbox, confidence, feature))
     return detection_list
 ```
+detection_mat : 格式为ndarray的检测矩阵。该矩阵的前十行均为标准MOTChallenge检测格式，剩余列项存储着每个检测目标的特征向量。<br>
+frame_idx : 格式为int的帧数索引。<br>
+min_height : 格式为int的最小检测边界框高度。比该值小的检测数据会被丢弃。
 
-1. 对检测框进行非最大值抑制，消除一个目标身上多个框的情况
+根据置信度对检测框进行过滤，即对置信度不足够高的检测框及特征予以删除
 ```python
-# Load image and generate detections
+# deep_sort_app.py
+# 加载图像并生成detections
 detections = create_detections(
 seq_info["detections"], frame_idx, min_detection_height)
 detections = [d for d in detections if d.confidence >= min_confidence]
 ```
-使用Yolo作为检测器，检测当前帧中的bbox
-#### 生成detections
-将检测到的bbox转换成detections
+
+对检测框进行非最大值抑制，消除一个目标身上多个框的情况
+```python
+# deep_sort_app.py
+# 运行非最大值抑制
+boxes = np.array([d.tlwh for d in detections])
+        scores = np.array([d.confidence for d in detections])
+        indices = preprocessing.non_max_suppression(
+            boxes, nms_max_overlap, scores)
+        detections = [detections[i] for i in indices]
+```
 #### 卡尔曼滤波预测阶段
 使用卡尔曼滤波预测前一帧中的tracks在当前帧的状态
+
+```python
+# deep_sort_app.py
+tracker.predict()
+```
+
+```python
+# tracker.py
+# 向前进一个时间步长传播轨道状态分布
+# 这个函数应该在卡尔曼滤波更新之前每个时间点调用一次
+def predict(self):
+    for track in self.tracks:
+        track.predict(self.kf)
+```
+
+预测完之后，需要对每一个tracker的self.time_since_update += 1。
+
+```python
+# track.py
+# 使用卡尔曼滤波器预测步骤
+def predict(self, kf):
+    self.mean, self.covariance = kf.predict(self.mean, self.covariance)
+    self.age += 1
+    self.time_since_update += 1
+```
+kf : 为卡尔曼滤波器(kalman_filter.KalmanFilter)
+
+执行kalman滤波公式1和2:<img src="https://render.githubusercontent.com/render/math?math=x(k)=Ax(k-1)">和<img src="https://render.githubusercontent.com/render/math?math=p(k)=Ap(k-1)A^{T}+Q">,其中，<img src="https://render.githubusercontent.com/render/math?math=x(k-1)">为目标的状态信息(代码中的mean)，<img src="https://render.githubusercontent.com/render/math?math=p(k−1)">为目标的估计误差(代码中的covariance)，A为状态转移矩阵，Q为系统误差。
+
+```python
+# kalman_filter.py
+def predict(self, mean, covariance):
+# 运行卡尔曼滤波器预测步骤
+    std_pos = [
+        self._std_weight_position * mean[3],
+        self._std_weight_position * mean[3],
+        1e-2,
+        self._std_weight_position * mean[3]]
+    std_vel = [
+        self._std_weight_velocity * mean[3],
+        self._std_weight_velocity * mean[3],
+        1e-5,
+        self._std_weight_velocity * mean[3]]
+    # 矩阵Q(系统误差)
+    motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
+    # 卡尔曼滤波公式1
+    mean = np.dot(self._motion_mat, mean)
+    
+    # 卡尔曼滤波公式2
+    covariance = np.linalg.multi_dot((
+        self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
+
+    return mean, covariance
+```
+
+mean : 格式为ndarray的位于前一个时间点的目标状态八维向量   
+covariance : 格式为ndarray的位于前一个时间点的目标状态8x8的协方差矩阵
+输出格式为(ndarray, ndarray)的预测目标平均向量和协方差矩阵，未被观测的速度将被初始化为0
+
 #### 匹配
-首先对基于外观信息的马氏距离(Mahalanobis distance)计算tracks和detections的代价矩阵，然后相继进行**级联匹配**和**IOU匹配**，最后得到当前帧的所有匹配对、未匹配的tracks以及未匹配的detections
+首先对基于外观信息的马氏距离(Mahalanobis distance)计算tracks和detections的代价矩阵，然后相继进行**级联匹配**和**IOU匹配**，最后得到当前帧的所有匹配对、未匹配的tracks以及未匹配的detections。
+
+```python
+# deep_sort_app.py
+tracker.update(detections)
+```
+
+```python
+# tracker.py
+def update(self, detections):
+      
+    # 运行级联匹配
+    matches, unmatched_tracks, unmatched_detections = self._match(detections)
+
+    # 更新tracks代价矩阵
+    for track_idx, detection_idx in matches:
+        self.tracks[track_idx].update(
+            self.kf, detections[detection_idx])
+    for track_idx in unmatched_tracks:
+        self.tracks[track_idx].mark_missed()
+    for detection_idx in unmatched_detections:
+        self._initiate_track(detections[detection_idx])
+    self.tracks = [t for t in self.tracks if not t.is_deleted()]
+
+    # 更新detections代价矩阵
+    active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
+    features, targets = [], []
+    for track in self.tracks:
+        if not track.is_confirmed():
+            continue
+        features += track.features
+        targets += [track.track_id for _ in track.features]
+        track.features = []
+    self.metric.partial_fit(
+        np.asarray(features), np.asarray(targets), active_targets)
+```
+
+进行检测结果和跟踪预测结果的匹配(级联匹配)
+
+1. 将已存在的tracker分为confirmed tracks和confirmed tracks
+1. 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配
+1. unconfirmed tracks和unmatched tracks一起组成iou_track_candidates，与还没有匹配的检测结果unmatched_detections进行IOU匹配
+```python
+# tracker.py
+# 级联匹配
+def _match(self, detections):
+
+    def gated_metric(tracks, dets, track_indices, detection_indices):
+        features = np.array([dets[i].feature for i in detection_indices])
+        targets = np.array([tracks[i].track_id for i in track_indices])
+        cost_matrix = self.metric.distance(features, targets)
+        cost_matrix = linear_assignment.gate_cost_matrix(
+            self.kf, cost_matrix, tracks, dets, track_indices,
+            detection_indices)
+
+        return cost_matrix
+
+    # 将已存在的tracker分为confirmed tracks和confirmed tracks
+    confirmed_tracks = [
+        i for i, t in enumerate(self.tracks) if t.is_confirmed()]
+    unconfirmed_tracks = [
+        i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
+
+    # 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配
+    matches_a, unmatched_tracks_a, unmatched_detections = \
+        linear_assignment.matching_cascade(
+            gated_metric, self.metric.matching_threshold, self.max_age,
+            self.tracks, detections, confirmed_tracks)
+
+    # unconfirmed tracks和unmatched tracks一起组成iou_track_candidates，与还没有匹配的检测结果unmatched_detections进行IOU匹配
+    iou_track_candidates = unconfirmed_tracks + [
+        k for k in unmatched_tracks_a if
+        self.tracks[k].time_since_update == 1]
+    unmatched_tracks_a = [
+        k for k in unmatched_tracks_a if
+        self.tracks[k].time_since_update != 1]
+    matches_b, unmatched_tracks_b, unmatched_detections = \
+        linear_assignment.min_cost_matching(
+            iou_matching.iou_cost, self.max_iou_distance, self.tracks,
+            detections, iou_track_candidates, unmatched_detections)
+
+    matches = matches_a + matches_b
+    unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
+    return matches, unmatched_tracks, unmatched_detections
+```
+
+
 #### 卡尔曼滤波更新阶段
 对于每个匹配成功的track，用其对应的detection进行更新，并处理未匹配tracks和detections
 
