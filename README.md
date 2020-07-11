@@ -158,7 +158,7 @@ def predict(self, kf):
 ```
 kf : 为卡尔曼滤波器(kalman_filter.KalmanFilter)
 
-执行kalman滤波公式1和2:<img src="https://render.githubusercontent.com/render/math?math=x(k)=Ax(k-1)">和<img src="https://render.githubusercontent.com/render/math?math=p(k)=Ap(k-1)A^{T}+Q">,其中，<img src="https://render.githubusercontent.com/render/math?math=x(k-1)">为目标的状态信息(代码中的mean)，<img src="https://render.githubusercontent.com/render/math?math=p(k−1)">为目标的估计误差(代码中的covariance)，A为状态转移矩阵，Q为系统误差。
+执行kalman滤波公式1和2:<img src="https://render.githubusercontent.com/render/math?math=x(k)=Ax(k-1)">和<img src="https://render.githubusercontent.com/render/math?math=p(k)=Ap(k-1)A^{T} + Q">,其中，<img src="https://render.githubusercontent.com/render/math?math=x(k-1)">为目标的状态信息(代码中的mean)，<img src="https://render.githubusercontent.com/render/math?math=p(k-1)">为目标的估计误差(代码中的covariance)，A为状态转移矩阵，Q为系统误差。
 
 ```python
 # kalman_filter.py
