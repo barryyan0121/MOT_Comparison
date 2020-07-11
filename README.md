@@ -465,6 +465,10 @@ def partial_fit(self, features, targets, active_targets):
 ```
 
 ### 运行结果
+在每一帧中已经确认的tracker结果将会标注在图上，下图所示为MOT16-06中某一帧已确认的结果：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/deepsort/images/Figure%20MOT16-06.png)<br>
+所有MOT16的追踪处理结果已生成为文本文档(https://github.com/barryyan0121/MOT_Comparison/tree/master/deepsort/results)<br>
+其格式为标准MOTChallenge检测格式，第一项为当前帧数，第二项为目标ID，第三至第六项为检测框特征\[center x, center y, aspect ratio, height\]，第七至第十项均为-1。
 生成视频帧数 处理速度 结果为文本文档
 
 ### 改进策略
