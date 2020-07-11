@@ -158,7 +158,7 @@ def predict(self, kf):
 ```
 kf : 为卡尔曼滤波器(kalman_filter.KalmanFilter)
 
-执行kalman滤波公式1和2:<img src="https://render.githubusercontent.com/render/math?math=x(k)=Ax(k-1)">和<img src="https://render.githubusercontent.com/render/math?math=p(k)=Ap(k-1)A^{T} + Q">,其中，<img src="https://render.githubusercontent.com/render/math?math=x(k-1)">为目标的状态信息(代码中的mean)，<img src="https://render.githubusercontent.com/render/math?math=p(k-1)">为目标的估计误差(代码中的covariance)，A为状态转移矩阵，Q为系统误差。
+执行kalman滤波公式1和2:<img src="https://render.githubusercontent.com/render/math?math=x(k)=Ax(k-1)">和<img src="https://render.githubusercontent.com/render/math?math=p(k)=Ap(k-1)A^{T}+Q">,其中，<img src="https://render.githubusercontent.com/render/math?math=x(k-1)">为目标的状态信息(代码中的mean)，<img src="https://render.githubusercontent.com/render/math?math=p(k-1)">为目标的估计误差(代码中的covariance)，A为状态转移矩阵，Q为系统误差。
 
 ```python
 # kalman_filter.py
@@ -191,7 +191,7 @@ covariance : 格式为ndarray的位于前一个时间点的目标状态8x8的协
 输出格式为(ndarray, ndarray)的预测目标平均向量和协方差矩阵，未被观测的速度将被初始化为0
 
 #### 匹配
-首先对基于外观信息的马氏距离(Mahalanobis distance)计算tracks和detections的代价矩阵，然后相继进行**级联匹配**和**IOU匹配**，最后得到当前帧的所有匹配对、未匹配的tracks以及未匹配的detections。
+首先对基于外观信息的马氏距离(Mahalanobis distance)计算跟踪框(tracks)和检测框(detections)的代价矩阵，然后相继进行**级联匹配**和**IOU匹配**，最后得到当前帧的所有匹配对、未匹配的tracks以及未匹配的detections。
 
 ```python
 # deep_sort_app.py
@@ -205,7 +205,7 @@ def update(self, detections):
     # 运行级联匹配
     matches, unmatched_tracks, unmatched_detections = self._match(detections)
 
-    # 更新tracks代价矩阵
+    # 更新跟踪框代价矩阵
     for track_idx, detection_idx in matches:
         self.tracks[track_idx].update(
             self.kf, detections[detection_idx])
@@ -215,7 +215,7 @@ def update(self, detections):
         self._initiate_track(detections[detection_idx])
     self.tracks = [t for t in self.tracks if not t.is_deleted()]
 
-    # 更新detections代价矩阵
+    # 更新检测框代价矩阵
     active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
     features, targets = [], []
     for track in self.tracks:
@@ -230,8 +230,8 @@ def update(self, detections):
 
 进行检测结果和跟踪预测结果的匹配(级联匹配)
 
-1. 将已存在的tracker分为confirmed tracks和confirmed tracks
-1. 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配
+1. 将已存在的tracker分为confirmed tracks和unconfirmed tracks
+1. 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配(这个匹配操作需要从刚刚匹配成功的tracker循环遍历到最多已经有30次没有匹配的tracker，这样做是为了对更加频繁出现的目标赋予优先权)
 1. unconfirmed tracks和unmatched tracks一起组成iou_track_candidates，与还没有匹配的检测结果unmatched_detections进行IOU匹配
 ```python
 # tracker.py
@@ -248,7 +248,7 @@ def _match(self, detections):
 
         return cost_matrix
 
-    # 将已存在的tracker分为confirmed tracks和confirmed tracks
+    # 将已存在的tracker分为confirmed tracks和unconfirmed tracks
     confirmed_tracks = [
         i for i, t in enumerate(self.tracks) if t.is_confirmed()]
     unconfirmed_tracks = [
@@ -260,7 +260,8 @@ def _match(self, detections):
             gated_metric, self.metric.matching_threshold, self.max_age,
             self.tracks, detections, confirmed_tracks)
 
-    # unconfirmed tracks和unmatched tracks一起组成iou_track_candidates，与还没有匹配的检测结果unmatched_detections进行IOU匹配
+    # unconfirmed tracks和unmatched tracks一起组成iou_track_candidates
+    # 与还没有匹配的检测结果unmatched_detections进行IOU匹配
     iou_track_candidates = unconfirmed_tracks + [
         k for k in unmatched_tracks_a if
         self.tracks[k].time_since_update == 1]
@@ -277,9 +278,191 @@ def _match(self, detections):
     return matches, unmatched_tracks, unmatched_detections
 ```
 
+**IOU匹配**(An intersection over union distance metric)<br>
+计算跟踪框两两之间的IOU，输出格式为ndarray的代价矩阵
+程序中把cost大于阈值(0.7)的，都置成了0.7
+```python
+# iou_matching.py
+def iou_cost(tracks, detections, track_indices=None,
+             detection_indices=None):
+    if track_indices is None:
+        track_indices = np.arange(len(tracks))
+    if detection_indices is None:
+        detection_indices = np.arange(len(detections))
 
+    cost_matrix = np.zeros((len(track_indices), len(detection_indices)))
+    for row, track_idx in enumerate(track_indices):
+        if tracks[track_idx].time_since_update > 1:
+            cost_matrix[row, :] = linear_assignment.INFTY_COST
+            continue
+
+        bbox = tracks[track_idx].to_tlwh()
+        candidates = np.asarray([detections[i].tlwh for i in detection_indices])
+        cost_matrix[row, :] = 1. - iou(bbox, candidates)
+    return cost_matrix
+```
+
+**匈牙利算法**(Hungarian Algorithm)
+输出格式为(List\[(int, int)\], List\[int\], List\[int\])
+1. 匹配的跟踪框(track)和检测框(detection)列表索引
+1. 不匹配的跟踪框(track)列表索引
+1. 不匹配的检测框(detection)列表索引
+```python
+# linear_assignment.py
+def min_cost_matching(
+        distance_metric, max_distance, tracks, detections, track_indices=None,
+        detection_indices=None):
+    if track_indices is None:
+        track_indices = np.arange(len(tracks))
+    if detection_indices is None:
+        detection_indices = np.arange(len(detections))
+
+    if len(detection_indices) == 0 or len(track_indices) == 0:
+        return [], track_indices, detection_indices  # Nothing to match.
+
+    cost_matrix = distance_metric(
+        tracks, detections, track_indices, detection_indices)
+    cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
+    
+    # 把cost_matrix作为匈牙利算法的输入，得到线性匹配结果
+    indices = linear_assignment(cost_matrix)
+
+    matches, unmatched_tracks, unmatched_detections = [], [], []
+    for col, detection_idx in enumerate(detection_indices):
+        if col not in indices[:, 1]:
+            unmatched_detections.append(detection_idx)
+    for row, track_idx in enumerate(track_indices):
+        if row not in indices[:, 0]:
+            unmatched_tracks.append(track_idx)
+    for row, col in indices:
+        track_idx = track_indices[row]
+        detection_idx = detection_indices[col]
+        
+        # 如果某个组合的cost大于阈值，这样的组合仍然unmatched
+        # 需要将组合中的检测框和跟踪框放回各自的unmatched列表
+        if cost_matrix[row, col] > max_distance:
+            unmatched_tracks.append(track_idx)
+            unmatched_detections.append(detection_idx)
+        else:
+            matches.append((track_idx, detection_idx))
+    # 经过上述处理后，得到依据IOU的当然匹配结果
+    return matches, unmatched_tracks, unmatched_detections
+```
 #### 卡尔曼滤波更新阶段
-对于每个匹配成功的track，用其对应的detection进行更新，并处理未匹配tracks和detections
+对于每个匹配成功的track，用其对应的detection进行更新，并处理未匹配tracks和detections<br>
+根据匹配情况进行后续相应操作
+
+1. 对于matched组合，要用检测结果去更新相应tracker的参数
+```python
+# tracker.py
+ for track_idx, detection_idx in matches:
+    self.tracks[track_idx].update(self.kf, detections[detection_idx])
+```
+
+更新包括以下三个操作
+    1. 更新卡尔曼滤波的一系列运动变量，命中次数以及重置时间
+    1. 将检测框的深度特征保存到此跟踪框的特征集合中
+    1. 如果已经连续命中3帧，将跟踪框的状态由tentative改为confirmed
+```python
+# track.py
+def update(self, kf, detection):
+    self.mean, self.covariance = kf.update(
+        self.mean, self.covariance, detection.to_xyah())
+    self.features.append(detection.feature)
+    self.hits += 1
+    self.time_since_update = 0
+    if self.state == TrackState.Tentative and self.hits >= self._n_init:
+        self.state = TrackState.Confirmed
+```
+2. 对于不匹配的跟踪框
+```python
+# tracker.py
+for track_idx in unmatched_tracks:
+    self.tracks[track_idx].mark_missed()
+```
+有以下两种情况
+    1. 如果这个跟踪框是还未确认的，直接将其从跟踪列表删除
+    1. 如果这个跟踪框是之前经过确认的，但是已经连续max_age(3)帧没能匹配到检测结果了，也需要将其从跟踪列表删除
+
+```python
+# track.py
+def mark_missed(self):
+    if self.state == TrackState.Tentative:
+        self.state = TrackState.Deleted
+    elif self.time_since_update > self._max_age:
+        self.state = TrackState.Deleted
+```
+
+3. 对于不匹配的检测框，要为其创建新的追踪器(tracker)
+```python
+# tracker.py
+for detection_idx in unmatched_detections:
+    self._initiate_track(detections[detection_idx])
+```
+根据初始检测位置初始化新的卡尔曼滤波器的平均值(mean)和协方差(covariance)
+```python
+# tracker.py
+def _initiate_track(self, detection):
+    mean, covariance = self.kf.initiate(detection.to_xyah())
+    # 初始化一个新的tracker
+    self.tracks.append(Track(
+        mean, covariance, self._next_id, self.n_init, self.max_age,
+        detection.feature))
+    self._next_id += 1
+```
+track初始化
+```python
+# track.py
+def __init__(self, mean, covariance, track_id, n_init, max_age,
+                 feature=None):
+    # tracker的构造函数
+    self.mean = mean # 初始的mean
+    self.covariance = covariance # 初始的covariance
+    self.track_id = track_id
+    self.hits = 1
+    self.age = 1
+    self.time_since_update = 0 # 初始值为0
+
+    self.state = TrackState.Tentative # 初始为Tentative状态
+    self.features = []
+    if feature is not None:
+        self.features.append(feature) # 相应的det特征存入特征库中 
+
+    self._n_init = n_init
+    self._max_age = max_age
+```
+最后需要删除待删除状态的追踪器
+```python
+# tracker.py
+self.tracks = [t for t in self.tracks if not t.is_deleted()]
+```
+### 更新已经确认的追踪器特征集并输出已经确认的追踪器的跟踪预测结果
+tracker最多保存最近与之匹配的100帧检测结果的特征集
+```python
+# tracker.py
+active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
+features, targets = [], []
+for track in self.tracks:
+    if not track.is_confirmed():
+        continue
+    features += track.features
+    targets += [track.track_id for _ in track.features]
+    track.features = []
+self.metric.partial_fit(
+    np.asarray(features), np.asarray(targets), active_targets)
+```
+
+```python
+# nn_matching.py
+def partial_fit(self, features, targets, active_targets):
+    # 每个activate的追踪器保留最近的self.budget条特征
+    for feature, target in zip(features, targets):
+        self.samples.setdefault(target, []).append(feature)
+        if self.budget is not None:
+            self.samples[target] = self.samples[target][-self.budget:]
+    # 以dict的形式插入总库
+    self.samples = {k: self.samples[k] for k in active_targets}
+```
 
 ### 运行结果
 生成视频帧数 处理速度 结果为文本文档
