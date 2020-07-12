@@ -545,7 +545,7 @@ YOLO是单阶段方法的开山之作。它将检测任务表述成一个统一�
 * 全局处理使得背景错误相对少，相比基于局部(区域)的方法，比如Fast RCNN
 * 泛化性能好，在艺术作品上做检测时，YOLO表现比Fast R-CNN好
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/yolo.jpg)
 
 #### YOLO的工作流程如下：
 
@@ -553,20 +553,55 @@ YOLO是单阶段方法的开山之作。它将检测任务表述成一个统一�
 
 2. 卷积网络：由GoogLeNet更改而来，每个网格对每个类别预测一个条件概率值，并在网格基础上生成B个box，每个box预测五个回归值，四个表征位置，第五个表征这个box含有物体（注意不是某一类物体）的概率和位置的准确程度（由IoU表示）。测试时，分数如下计算：
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/convnet.jpg)
 
 等式左边第一项由网格预测，后两项由每个box预测，以条件概率的方式得到每个box含有不同类别物体的分数。 因而，卷积网络共输出的预测值个数为S×S×(B×5+C)，其中S为网格数，B为每个网格生成box个数，C为类别数。
 
 3. 后处理：使用NMS（Non-Maximum Suppression，非极大抑制）过滤得到最后的预测框
 
 #### 损失函数的设计
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
 
 损失函数被分为三部分：坐标误差、物体误差、类别误差。为了平衡类别不均衡和大小物体等带来的影响，损失函数中添加了权重并将长宽取根号。
 
 YOLO提出了单阶段的新思路，相比两阶段方法，其速度优势明显，实时的特性令人印象深刻。但YOLO本身也存在一些问题，如划分网格较为粗糙，每个网格生成的box个数等限制了对小尺度物体和相近物体的检测。
 
 ### EfficientNet/EfficientDet
+EfficientDet是Google的大作。在分类任务上有一篇EfficientNet，从名字看就知道，它是EfficientNet的在目标检测任务上的延伸。这篇文章的重点有两个：首先是BiFPN结构(weighted bi-directional feature pyramid network)，可以更快更好地融合特征。其次是提出一种compound scaling method，在EfficientNet那篇论文里也有提过。本质上，就是把NAS需要搜索优化的很多参数，基于一些insight和经验，用少量的参数关联起来，这样就可以减小减小搜索空间，实现更快更高效地搜索。EfficientDet使用的是SSD+FPN的one-stage检测架构，所以需要搜索的网络结构参数，包含backbone、feature网络(FPN)、bbox/cls 网络的width、height以及输入的resolution。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+#### BiFPN (双向FPN)
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神经架构搜索得到网络结构，但是结构的可解释性很差。EfficientDet参考PANet，增加了skip connection和weighted fusion，以便更好地融合特征。
+
+#### Weighted Feature Fusion
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+在FPN部分，每个节点都是由多个节点融合而来的，我们发现，不同深度的feature map对结果的贡献是不同的。因此，我们给每个节点的输入节点添加learnable权重。为了更好地学习降低计算效率，不适用sigmoid归一化，而使用均值归一化。
+
+#### Compound Scaling Method
+
+目标检测中需要考虑的参数比分类任务更多。EfficientNet分类任务中只考虑了网络三要素width，depth和resolution(input)，目标检测任务中，还需要考虑cls/bbox net。EfficientDet将EfficientNet拿来做backbone，从而有效控制其规模，neck部分，BiFPN的channel数量、重复的layer数量也可以控制，此外还有head部分的层数，以及输入图片的分辨率(input resolution)，这些组成了EfficientDet的Compound Scaling。
+
+通过优化一个参数关联所有需要搜索优化的参数搜索得到最优的网络架构，这就是compound scaling method。
+
+#### 网络结构
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+基于一阶段SSD+FPN结构改造。以EfficientNet为backbone，然后接上3个(bottom-up & up-down)的结构，最后的特征用于预测bbox和cls。
+
+* Backbone network：直接利用EfficientNet的B0-B6作为预训练的backbone
+* BiFPN network：指数调整BiFPN的channel数，线性调整BiFPN的depth
+* Box/class prediction network：channel数和BiFPN保持一致，线性调整depth
+* Input image resolution：因为使用了P3-P7层进行特征融合，输入分辨率调整后必须是128的倍数
+
+EfficientDet的调整策略总结如下：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+一系列的EfficientDet网络都在精度、参数量、计算量、CPU速度以及GPU速度上完成了对之前SOTA方法的提升。在相同精度要求下，EfficientDet比YOLOv3少28倍的计算量，比RetinaNet少30倍的计算量，比Nas-FPN少19倍的计算量。此外，在刷SOTA结果时，单模型单尺度下EfficientDet-D7可以达到51.0 mAP，这比目前最好的结果还要高，同时参数量少了4倍，计算量少了9.3倍。
 
 ## 行人重识别(Re-ID)
 
@@ -579,4 +614,4 @@ https://www.cnblogs.com/yanwei-li/p/8643446.html<br>
 https://blog.csdn.net/cdknight_happy/article/details/79731981<br>
 https://zhuanlan.zhihu.com/p/34142321
 https://zhuanlan.zhihu.com/p/131008921
-
+https://zhuanlan.zhihu.com/p/31921944
