@@ -569,16 +569,16 @@ YOLO提出了单阶段的新思路，相比两阶段方法，其速度优势明�
 ### EfficientNet/EfficientDet
 EfficientDet是Google的大作。在分类任务上有一篇EfficientNet，从名字看就知道，它是EfficientNet的在目标检测任务上的延伸。这篇文章的重点有两个：首先是BiFPN结构(weighted bi-directional feature pyramid network)，可以更快更好地融合特征。其次是提出一种compound scaling method，在EfficientNet那篇论文里也有提过。本质上，就是把NAS需要搜索优化的很多参数，基于一些insight和经验，用少量的参数关联起来，这样就可以减小减小搜索空间，实现更快更高效地搜索。EfficientDet使用的是SSD+FPN的one-stage检测架构，所以需要搜索的网络结构参数，包含backbone、feature网络(FPN)、bbox/cls 网络的width、height以及输入的resolution。
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/efficientdet.jpg)
 
 #### BiFPN (双向FPN)
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/bifpn.jpg)
 
 FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神经架构搜索得到网络结构，但是结构的可解释性很差。EfficientDet参考PANet，增加了skip connection和weighted fusion，以便更好地融合特征。
 
 #### Weighted Feature Fusion
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/weighted%20feature%20fusion.jpg)
 
 在FPN部分，每个节点都是由多个节点融合而来的，我们发现，不同深度的feature map对结果的贡献是不同的。因此，我们给每个节点的输入节点添加learnable权重。为了更好地学习降低计算效率，不适用sigmoid归一化，而使用均值归一化。
 
@@ -589,7 +589,7 @@ FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神�
 通过优化一个参数关联所有需要搜索优化的参数搜索得到最优的网络架构，这就是compound scaling method。
 
 #### 网络结构
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/efficientdet%20architecture.jpg)
 
 基于一阶段SSD+FPN结构改造。以EfficientNet为backbone，然后接上3个(bottom-up & up-down)的结构，最后的特征用于预测bbox和cls。
 
@@ -599,7 +599,7 @@ FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神�
 * Input image resolution：因为使用了P3-P7层进行特征融合，输入分辨率调整后必须是128的倍数
 
 EfficientDet的调整策略总结如下：<br>
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/adjustment.jpg)
 
 一系列的EfficientDet网络都在精度、参数量、计算量、CPU速度以及GPU速度上完成了对之前SOTA方法的提升。在相同精度要求下，EfficientDet比YOLOv3少28倍的计算量，比RetinaNet少30倍的计算量，比Nas-FPN少19倍的计算量。此外，在刷SOTA结果时，单模型单尺度下EfficientDet-D7可以达到51.0 mAP，这比目前最好的结果还要高，同时参数量少了4倍，计算量少了9.3倍。
 
