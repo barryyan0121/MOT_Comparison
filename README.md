@@ -567,6 +567,23 @@ YOLO是单阶段方法的开山之作。它将检测任务表述成一个统一�
 YOLO提出了单阶段的新思路，相比两阶段方法，其速度优势明显，实时的特性令人印象深刻。但YOLO本身也存在一些问题，如划分网格较为粗糙，每个网格生成的box个数等限制了对小尺度物体和相近物体的检测。
 
 ### EfficientNet/EfficientDet
+EfficientDet是Google的大作。在分类任务上有一篇EfficientNet，从名字看就知道，它是EfficientNet的在目标检测任务上的延伸。这篇文章的重点有两个：首先是BiFPN结构(weighted bi-directional feature pyramid network)，可以更快更好地融合特征。其次是提出一种compound scaling method，在EfficientNet那篇论文里也有提过。本质上，就是把NAS需要搜索优化的很多参数，基于一些insight和经验，用少量的参数关联起来，这样就可以减小减小搜索空间，实现更快更高效地搜索。EfficientDet使用的是SSD+FPN的one-stage检测架构，所以需要搜索的网络结构参数，包含backbone、feature网络(FPN)、bbox/cls 网络的width、height以及输入的resolution。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+#### BiFPN (双向FPN)
+FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神经架构搜索得到网络结构，但是结构的可解释性很差。EfficientDet参考PANet，增加了skip connection和weighted fusion，以便更好地融合特征。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+#### Weighted Feature Fusion
+在FPN部分，每个节点都是由多个节点融合而来的，我们发现，不同深度的feature map对结果的贡献是不同的。因此，我们给每个节点的输入节点添加learnable权重。为了更好地学习降低计算效率，不适用sigmoid归一化，而使用均值归一化。
+
+#### Compound Scaling Method
+
+目标检测中需要考虑的参数比分类任务更多。分类任务中只考虑了width，depth和resolution（input)，目标检测任务中，还需要考虑cls/bbox net。
+
+与EfficientNet相同，在架构搜索阶段。我们用一个参数$\phi$关联所有需要搜索优化的参数，比如width，bbox/cls 的depth, 以及input resolution。通过优化$\phi$，我们搜索得到最优的网络架构。这就是compond scaling method。
 
 ## 行人重识别(Re-ID)
 
