@@ -572,18 +572,36 @@ EfficientDet是Google的大作。在分类任务上有一篇EfficientNet，从�
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
 
 #### BiFPN (双向FPN)
-FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神经架构搜索得到网络结构，但是结构的可解释性很差。EfficientDet参考PANet，增加了skip connection和weighted fusion，以便更好地融合特征。
 
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
 
+FPN只有bottom-2-up的path；PANet使用了双path的结构；NAS-FPN通过神经架构搜索得到网络结构，但是结构的可解释性很差。EfficientDet参考PANet，增加了skip connection和weighted fusion，以便更好地融合特征。
+
 #### Weighted Feature Fusion
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
 在FPN部分，每个节点都是由多个节点融合而来的，我们发现，不同深度的feature map对结果的贡献是不同的。因此，我们给每个节点的输入节点添加learnable权重。为了更好地学习降低计算效率，不适用sigmoid归一化，而使用均值归一化。
 
 #### Compound Scaling Method
 
-目标检测中需要考虑的参数比分类任务更多。分类任务中只考虑了width，depth和resolution（input)，目标检测任务中，还需要考虑cls/bbox net。
+目标检测中需要考虑的参数比分类任务更多。EfficientNet分类任务中只考虑了网络三要素width，depth和resolution(input)，目标检测任务中，还需要考虑cls/bbox net。EfficientDet将EfficientNet拿来做backbone，从而有效控制其规模，neck部分，BiFPN的channel数量、重复的layer数量也可以控制，此外还有head部分的层数，以及输入图片的分辨率(input resolution)，这些组成了EfficientDet的Compound Scaling。
 
-与EfficientNet相同，在架构搜索阶段。我们用一个参数$\phi$关联所有需要搜索优化的参数，比如width，bbox/cls 的depth, 以及input resolution。通过优化$\phi$，我们搜索得到最优的网络架构。这就是compond scaling method。
+通过优化一个参数关联所有需要搜索优化的参数搜索得到最优的网络架构，这就是compound scaling method。
+
+#### 网络结构
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+基于一阶段SSD+FPN结构改造。以EfficientNet为backbone，然后接上3个(bottom-up & up-down)的结构，最后的特征用于预测bbox和cls。
+
+* Backbone network：直接利用EfficientNet的B0-B6作为预训练的backbone
+* BiFPN network：指数调整BiFPN的channel数，线性调整BiFPN的depth
+* Box/class prediction network：channel数和BiFPN保持一致，线性调整depth
+* Input image resolution：因为使用了P3-P7层进行特征融合，输入分辨率调整后必须是128的倍数
+
+EfficientDet的调整策略总结如下：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
+
+一系列的EfficientDet网络都在精度、参数量、计算量、CPU速度以及GPU速度上完成了对之前SOTA方法的提升。在相同精度要求下，EfficientDet比YOLOv3少28倍的计算量，比RetinaNet少30倍的计算量，比Nas-FPN少19倍的计算量。此外，在刷SOTA结果时，单模型单尺度下EfficientDet-D7可以达到51.0 mAP，这比目前最好的结果还要高，同时参数量少了4倍，计算量少了9.3倍。
 
 ## 行人重识别(Re-ID)
 
