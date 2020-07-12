@@ -545,7 +545,7 @@ YOLO是单阶段方法的开山之作。它将检测任务表述成一个统一�
 * 全局处理使得背景错误相对少，相比基于局部(区域)的方法，比如Fast RCNN
 * 泛化性能好，在艺术作品上做检测时，YOLO表现比Fast R-CNN好
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/yolo.jpg)
 
 #### YOLO的工作流程如下：
 
@@ -553,14 +553,14 @@ YOLO是单阶段方法的开山之作。它将检测任务表述成一个统一�
 
 2. 卷积网络：由GoogLeNet更改而来，每个网格对每个类别预测一个条件概率值，并在网格基础上生成B个box，每个box预测五个回归值，四个表征位置，第五个表征这个box含有物体（注意不是某一类物体）的概率和位置的准确程度（由IoU表示）。测试时，分数如下计算：
 
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/convnet.jpg)
 
 等式左边第一项由网格预测，后两项由每个box预测，以条件概率的方式得到每个box含有不同类别物体的分数。 因而，卷积网络共输出的预测值个数为S×S×(B×5+C)，其中S为网格数，B为每个网格生成box个数，C为类别数。
 
 3. 后处理：使用NMS（Non-Maximum Suppression，非极大抑制）过滤得到最后的预测框
 
 #### 损失函数的设计
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/faster%20r-cnn.jpg)
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/loss_function.jpg)
 
 损失函数被分为三部分：坐标误差、物体误差、类别误差。为了平衡类别不均衡和大小物体等带来的影响，损失函数中添加了权重并将长宽取根号。
 
