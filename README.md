@@ -471,9 +471,21 @@ def partial_fit(self, features, targets, active_targets):
 所有MOT16的追踪处理结果已生成为文本文档(https://github.com/barryyan0121/MOT_Comparison/tree/master/deepsort/results)<br>
 其格式为标准MOTChallenge检测格式，第一项为当前帧数，第二项为目标ID，第三至第六项为检测框特征\[center x, center y, aspect ratio, height\]，第七至第十项均为-1。
 
+MOT16-01共计450帧数，耗时22.47秒，平均每秒处理20.0帧，生成视频为29FPS
 
+MOT16-03共计1500帧数，耗时138.76秒，平均每秒处理10.8帧，生成视频为29FPS
 
-生成视频帧数 处理速度 结果为文本文档
+MOT16-06共计1194帧数，耗时37.49秒，平均每秒处理31.8帧，生成视频为14FPS
+
+MOT16-07共计500帧数，耗时33.37秒，平均每秒处理15.0帧，生成视频为29FPS
+
+MOT16-08共计625帧数，耗时32.99秒，平均每秒处理18.9帧，生成视频为29FPS
+
+MOT16-12共计900帧数，耗时36.21秒，平均每秒处理24.9帧，生成视频为29FPS
+
+MOT16-14共计750帧数，耗时43.96秒，平均每秒处理17.1帧，生成视频为10FPS
+
+除MOT16-14外，其余生成视频皆接近于原FPS
 
 ### 改进策略
 
