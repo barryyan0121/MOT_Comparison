@@ -499,6 +499,16 @@ MOT16-14共计750帧数，耗时43.96秒，平均每秒处理17.1帧，生成视
 
 ## FairMOT (A simple baseline for one-shot Multi-Object Tracking)
 
+### 导语
+FairMOT是类似于CenterTrack的基于CenterNet的联合检测和跟踪的框架，同时类似却又不同于JDE的框架，它探讨了检测框架与ReID特征任务的集成问题，这类框架被称为为one-shot MOT框架。
+
+anchor-based的检测框架中存在anchor和特征的不对齐问题，所以这方面不如anchor-free框架，因而选择anchor-free算法——CenterNet，不过其用法并不是类似于CenterTrack，而是采用的Tracktor++的方式。
+
+### Tracker++
+Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架，这类框架与MOTDT框架最大的不同在于，检测部分不仅仅用于前景和背景的进一步分类，还利用回归对目标进行了进一步修正，其核心在于利用跟踪框和观测框代替原有的RPN模块，从而得到真正的观测框，最后利用数据关联实现跟踪框和观测框的匹配。流程图如下：
+
+原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构：
+
 ## 目标检测(Object Detection)
 如何从图像中解析出可供计算机理解的信息，是机器视觉的中心问题。近年来，深度学习模型逐渐取代传统机器视觉方法而成为目标检测领域的主流算法。深度学习模型由于其强大的表示能力，加之数据量的积累和计算力的进步，成为机器视觉的热点研究方向。
 
@@ -617,7 +627,7 @@ EfficientDet的调整策略总结如下：<br>
 
 ## 行人重识别(Re-ID)
 
-## Acknowledgement
+## 参考资源
 https://zhuanlan.zhihu.com/p/59148865<br>
 https://zhuanlan.zhihu.com/p/90835266<br>
 https://zhuanlan.zhihu.com/p/80764724<br>
