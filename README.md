@@ -88,7 +88,12 @@ Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，�
 在行人重识别数据集上离线训练残差网络模型。输出128维的归一化的特征。
 
 ### 代码解读
+论文中提供的代码是如下地址: https://github.com/nwojke/deep_sort
+
 按视频帧顺序处理，每一帧的处理流程如下:
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/cri2dh3p5w.png)
+
 #### 检测并生成detections
 读取当前帧目标检测框的位置及各检测框图像块的深度特征(此处在处理实际使用时需要自己来提取)
 
@@ -506,6 +511,8 @@ anchor-based的检测框架中存在anchor和特征的不对齐问题，所以�
 
 ### Tracker++
 Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架，这类框架与MOTDT框架最大的不同在于，检测部分不仅仅用于前景和背景的进一步分类，还利用回归对目标进行了进一步修正，其核心在于利用跟踪框和观测框代替原有的RPN模块，从而得到真正的观测框，最后利用数据关联实现跟踪框和观测框的匹配。流程图如下：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/v2-fb2ddc1ea3290991400cb76f424e8fc1_720w.jpg)
 
 原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构：
 
