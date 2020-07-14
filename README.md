@@ -499,6 +499,8 @@ MOT16-14共计750帧数，耗时43.96秒，平均每秒处理17.1帧，生成视
 
 ## FairMOT (A simple baseline for one-shot Multi-Object Tracking)
 
+
+
 ## 目标检测(Object Detection)
 如何从图像中解析出可供计算机理解的信息，是机器视觉的中心问题。近年来，深度学习模型逐渐取代传统机器视觉方法而成为目标检测领域的主流算法。深度学习模型由于其强大的表示能力，加之数据量的积累和计算力的进步，成为机器视觉的热点研究方向。
 
@@ -617,7 +619,7 @@ EfficientDet的调整策略总结如下：<br>
 
 ## 行人重识别(Re-ID)
 
-## Acknowledgement
+## 参考资源
 https://zhuanlan.zhihu.com/p/59148865<br>
 https://zhuanlan.zhihu.com/p/90835266<br>
 https://zhuanlan.zhihu.com/p/80764724<br>
