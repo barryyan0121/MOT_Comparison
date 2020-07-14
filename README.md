@@ -124,6 +124,11 @@ seq_info["detections"], frame_idx, min_detection_height)
 detections = [d for d in detections if d.confidence >= min_confidence]
 ```
 
+Detection类用于保存通过目标检测器得到的一个检测框，包含top left坐标+框的宽和高，以及该bbox的置信度还有通过Re-ID获取得到的对应的embedding。除此以外提供了不同bbox位置格式的转换方法：
+* tlwh: 代表左上角坐标+宽高
+* tlbr: 代表左上角坐标+右下角坐标
+* xyah: 代表中心坐标+宽高比+高
+
 对检测框进行非最大值抑制，消除一个目标身上多个框的情况
 ```python
 # deep_sort_app.py
@@ -155,6 +160,46 @@ def predict(self):
 
 ```python
 # track.py
+class Track:
+    # 一个轨迹的信息，包含(x,y,a,h) & v
+    """
+    A single target track with state space `(x, y, a, h)` and associated
+    velocities, where `(x, y)` is the center of the bounding box, `a` is the
+    aspect ratio and `h` is the height.
+    """
+
+    def __init__(self, mean, covariance, track_id, n_init, max_age,
+                 feature=None):
+        # max age是一个存活期限，默认为70帧,在
+        self.mean = mean
+        self.covariance = covariance
+        self.track_id = track_id
+        self.hits = 1 
+        # hits和n_init进行比较
+        # hits每次update的时候进行一次更新（只有match的时候才进行update）
+        # hits代表匹配上了多少次，匹配次数超过n_init就会设置为confirmed状态
+        self.age = 1 # 没有用到，和time_since_update功能重复
+        self.time_since_update = 0
+        # 每次调用predict函数的时候就会+1
+        # 每次调用update函数的时候就会设置为0
+
+        self.state = TrackState.Tentative
+        self.features = []
+        # 每个track对应多个features, 每次更新都将最新的feature添加到列表中
+        if feature is not None:
+            self.features.append(feature)
+
+        self._n_init = n_init  # 如果连续n_init帧都没有出现失配，设置为deleted状态
+        self._max_age = max_age  # 上限
+```
+
+Track类主要存储的是轨迹信息，mean和covariance是保存的框的位置和速度信息，track_id代表分配给这个轨迹的ID。state代表框的状态，有三种：
+* Tentative: 不确定态，这种状态会在初始化一个Track的时候分配，并且只有在连续匹配上n_init帧才会转变为确定态。如果在处于不确定态的情况下没有匹配上任何detection，那将转变为删除态。
+* Confirmed: 确定态，代表该Track确实处于匹配状态。如果当前Track属于确定态，但是失配连续达到max age次数的时候，就会被转变为删除态。
+* Deleted: 删除态，说明该Track已经失效。
+
+```python
+# track.py
 # 使用卡尔曼滤波器预测步骤
 def predict(self, kf):
     self.mean, self.covariance = kf.predict(self.mean, self.covariance)
@@ -169,6 +214,8 @@ kf : 为卡尔曼滤波器(kalman_filter.KalmanFilter)
 # kalman_filter.py
 def predict(self, mean, covariance):
 # 运行卡尔曼滤波器预测步骤
+    # 相当于得到t时刻估计值
+    # Q 预测过程中噪声协方差
     std_pos = [
         self._std_weight_position * mean[3],
         self._std_weight_position * mean[3],
@@ -179,12 +226,13 @@ def predict(self, mean, covariance):
         self._std_weight_velocity * mean[3],
         1e-5,
         self._std_weight_velocity * mean[3]]
-    # 矩阵Q(系统误差)
+    # np.r_ 按列连接两个矩阵
+    # 初始化噪声矩阵Q
     motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
-    # 卡尔曼滤波公式1
+    # 卡尔曼滤波公式1(x' = Fx)
     mean = np.dot(self._motion_mat, mean)
     
-    # 卡尔曼滤波公式2
+    # 卡尔曼滤波公式2(P' = FPF^T+Q)
     covariance = np.linalg.multi_dot((
         self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
 
@@ -195,6 +243,53 @@ mean : 格式为ndarray的位于前一个时间点的目标状态八维向量
 covariance : 格式为ndarray的位于前一个时间点的目标状态8x8的协方差矩阵
 输出格式为(ndarray, ndarray)的预测目标平均向量和协方差矩阵，未被观测的速度将被初始化为0
 
+#### ReID特征提取部分
+ReID网络是独立于目标检测和跟踪器的模块，功能是提取对应bounding box中的feature,得到一个固定维度的embedding作为该bbox的代表，供计算相似度时使用。
+```python
+# Extractor.py
+class Extractor(object):
+    def __init__(self, model_name, model_path, use_cuda=True):
+        self.net = build_model(name=model_name,
+                               num_classes=96)
+        self.device = "cuda" if torch.cuda.is_available(
+        ) and use_cuda else "cpu"
+        state_dict = torch.load(model_path)['net_dict']
+        self.net.load_state_dict(state_dict)
+        print("Loading weights from {}... Done!".format(model_path))
+        self.net.to(self.device)
+        self.size = (128,128)
+        self.norm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.3568, 0.3141, 0.2781],
+                                 [0.1752, 0.1857, 0.1879])
+        ])
+
+    def _preprocess(self, im_crops):
+        """
+        TODO:
+            1. to float with scale from 0 to 1
+            2. resize to (64, 128) as Market1501 dataset did
+            3. concatenate to a numpy array
+            3. to torch Tensor
+            4. normalize
+        """
+        def _resize(im, size):
+            return cv2.resize(im.astype(np.float32) / 255., size)
+
+        im_batch = torch.cat([
+            self.norm(_resize(im, self.size)).unsqueeze(0) for im in im_crops
+        ],dim=0).float()
+        return im_batch
+
+    def __call__(self, im_crops):
+        im_batch = self._preprocess(im_crops)
+        with torch.no_grad():
+            im_batch = im_batch.to(self.device)
+            features = self.net(im_batch)
+        return features.cpu().numpy()
+```
+模型训练是按照传统ReID的方法进行，使用Extractor类的时候输入为一个list的图片，得到图片对应的特征。
+
 #### 匹配
 首先对基于外观信息的马氏距离(Mahalanobis distance)计算跟踪框(tracks)和检测框(detections)的代价矩阵，然后相继进行**级联匹配**和**IOU匹配**，最后得到当前帧的所有匹配对、未匹配的tracks以及未匹配的detections。
 
@@ -203,34 +298,59 @@ covariance : 格式为ndarray的位于前一个时间点的目标状态8x8的协
 tracker.update(detections)
 ```
 
+Tracker类是最核心的类，Tracker中保存了所有的轨迹信息，负责初始化第一帧的轨迹、卡尔曼滤波的预测和更新、负责级联匹配、IOU匹配等等核心工作。
+
+update函数
 ```python
 # tracker.py
 def update(self, detections):
-      
-    # 运行级联匹配
-    matches, unmatched_tracks, unmatched_detections = self._match(detections)
+    # 进行测量的更新和轨迹管理
+    """Perform measurement update and track management.
 
-    # 更新跟踪框代价矩阵
+    Parameters
+    ----------
+    detections : List[deep_sort.detection.Detection]
+        A list of detections at the current time step.
+
+    """
+    # Run matching cascade.
+    matches, unmatched_tracks, unmatched_detections = \
+        self._match(detections)
+
+    # Update track set.
+    # 1. 针对匹配上的结果
     for track_idx, detection_idx in matches:
-        self.tracks[track_idx].update(
-            self.kf, detections[detection_idx])
+        # track更新对应的detection
+        self.tracks[track_idx].update(self.kf, detections[detection_idx])
+
+    # 2. 针对未匹配的tracker,调用mark_missed标记
+    # track失配，若待定则删除，若update时间很久也删除
+    # max age是一个存活期限，默认为70帧
     for track_idx in unmatched_tracks:
         self.tracks[track_idx].mark_missed()
+
+    # 3. 针对未匹配的detection， detection失配，进行初始化
     for detection_idx in unmatched_detections:
         self._initiate_track(detections[detection_idx])
+
+    # 得到最新的tracks列表，保存的是标记为confirmed和Tentative的track
     self.tracks = [t for t in self.tracks if not t.is_deleted()]
 
-    # 更新检测框代价矩阵
+    # Update distance metric.
     active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
+    # 获取所有confirmed状态的track id
     features, targets = [], []
     for track in self.tracks:
         if not track.is_confirmed():
             continue
-        features += track.features
+        features += track.features  # 将tracks列表拼接到features列表
+        # 获取每个feature对应的track id
         targets += [track.track_id for _ in track.features]
         track.features = []
-    self.metric.partial_fit(
-        np.asarray(features), np.asarray(targets), active_targets)
+
+    # 距离度量中的 特征集更新
+    self.metric.partial_fit(np.asarray(features), np.asarray(targets),
+                            active_targets)
 ```
 
 进行检测结果和跟踪预测结果的匹配(级联匹配)
@@ -238,49 +358,144 @@ def update(self, detections):
 1. 将已存在的tracker分为confirmed tracks和unconfirmed tracks
 1. 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配(这个匹配操作需要从刚刚匹配成功的tracker循环遍历到最多已经有30次没有匹配的tracker，这样做是为了对更加频繁出现的目标赋予优先权)
 1. unconfirmed tracks和unmatched tracks一起组成iou_track_candidates，与还没有匹配的检测结果unmatched_detections进行IOU匹配
+
+match函数
 ```python
 # tracker.py
 # 级联匹配
 def _match(self, detections):
-
+    # 主要功能是进行匹配，找到匹配的，未匹配的部分
     def gated_metric(tracks, dets, track_indices, detection_indices):
+        # 功能： 用于计算track和detection之间的距离，代价函数
+        #        需要使用在KM算法之前
+        # 调用：
+        # cost_matrix = distance_metric(tracks, detections,
+        #                  track_indices, detection_indices)
         features = np.array([dets[i].feature for i in detection_indices])
         targets = np.array([tracks[i].track_id for i in track_indices])
+
+        # 1. 通过最近邻计算出代价矩阵 cosine distance
         cost_matrix = self.metric.distance(features, targets)
+        # 2. 计算马氏距离,得到新的状态矩阵
         cost_matrix = linear_assignment.gate_cost_matrix(
             self.kf, cost_matrix, tracks, dets, track_indices,
             detection_indices)
-
         return cost_matrix
 
-    # 将已存在的tracker分为confirmed tracks和unconfirmed tracks
+    # Split track set into confirmed and unconfirmed tracks.
+    # 划分不同轨迹的状态
     confirmed_tracks = [
-        i for i, t in enumerate(self.tracks) if t.is_confirmed()]
+        i for i, t in enumerate(self.tracks) if t.is_confirmed()
+    ]
     unconfirmed_tracks = [
-        i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
+        i for i, t in enumerate(self.tracks) if not t.is_confirmed()
+    ]
 
-    # 针对之前已经confirmed tracks，将它们与当前的检测结果进行级联匹配
+    # 进行级联匹配，得到匹配的track、不匹配的track、不匹配的detection
+    '''
+    !!!!!!!!!!!
+    级联匹配
+    !!!!!!!!!!!
+    '''
+    # gated_metric->cosine distance
+    # 仅仅对确定态的轨迹进行级联匹配
     matches_a, unmatched_tracks_a, unmatched_detections = \
         linear_assignment.matching_cascade(
-            gated_metric, self.metric.matching_threshold, self.max_age,
-            self.tracks, detections, confirmed_tracks)
+            gated_metric,
+            self.metric.matching_threshold,
+            self.max_age,
+            self.tracks,
+            detections,
+            confirmed_tracks)
 
-    # unconfirmed tracks和unmatched tracks一起组成iou_track_candidates
-    # 与还没有匹配的检测结果unmatched_detections进行IOU匹配
+    # 将所有状态为未确定态的轨迹和刚刚没有匹配上的轨迹组合为iou_track_candidates，
+    # 进行IoU的匹配
     iou_track_candidates = unconfirmed_tracks + [
-        k for k in unmatched_tracks_a if
-        self.tracks[k].time_since_update == 1]
+        k for k in unmatched_tracks_a
+        if self.tracks[k].time_since_update == 1  # 刚刚没有匹配上
+    ]
+    # 未匹配
     unmatched_tracks_a = [
-        k for k in unmatched_tracks_a if
-        self.tracks[k].time_since_update != 1]
+        k for k in unmatched_tracks_a
+        if self.tracks[k].time_since_update != 1  # 已经很久没有匹配上
+    ]
+
+    '''
+    !!!!!!!!!!!
+    IOU 匹配
+    对级联匹配中还没有匹配成功的目标再进行IoU匹配
+    !!!!!!!!!!!
+    '''
+    # 虽然和级联匹配中使用的都是min_cost_matching作为核心，
+    # 这里使用的metric是iou cost和以上不同
     matches_b, unmatched_tracks_b, unmatched_detections = \
         linear_assignment.min_cost_matching(
-            iou_matching.iou_cost, self.max_iou_distance, self.tracks,
-            detections, iou_track_candidates, unmatched_detections)
+            iou_matching.iou_cost,
+            self.max_iou_distance,
+            self.tracks,
+            detections,
+            iou_track_candidates,
+            unmatched_detections)
 
-    matches = matches_a + matches_b
+    matches = matches_a + matches_b  # 组合两部分match得到的结果
+
     unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
     return matches, unmatched_tracks, unmatched_detections
+```
+
+级联匹配对应的实现
+```python
+# 1. 分配track_indices和detection_indices
+if track_indices is None:
+    track_indices = list(range(len(tracks)))
+
+if detection_indices is None:
+    detection_indices = list(range(len(detections)))
+
+unmatched_detections = detection_indices
+
+matches = []
+# cascade depth = max age 默认为70
+for level in range(cascade_depth):
+    if len(unmatched_detections) == 0:  # No detections left
+        break
+
+    track_indices_l = [
+        k for k in track_indices
+        if tracks[k].time_since_update == 1 + level
+    ]
+    if len(track_indices_l) == 0:  # Nothing to match at this level
+        continue
+
+    # 2. 级联匹配核心内容就是这个函数
+    matches_l, _, unmatched_detections = \
+        min_cost_matching(  # max_distance=0.2
+            distance_metric, max_distance, tracks, detections,
+            track_indices_l, unmatched_detections)
+    matches += matches_l
+unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
+```
+**门控矩阵**
+门控矩阵的作用就是通过计算卡尔曼滤波的状态分布和测量值之间的距离对代价矩阵进行限制。
+
+代价矩阵中的距离是Track和Detection之间的表观相似度，假如一个轨迹要去匹配两个表观特征非常相似的Detection，这样就很容易出错，但是这个时候分别让两个Detection计算与这个轨迹的马氏距离，并使用一个阈值gating_threshold进行限制，所以就可以将马氏距离较远的那个Detection区分开，可以降低错误的匹配。
+```python
+def gate_cost_matrix(
+        kf, cost_matrix, tracks, detections, track_indices, detection_indices,
+        gated_cost=INFTY_COST, only_position=False):
+    # 根据通过卡尔曼滤波获得的状态分布，使成本矩阵中的不可行条目无效。
+    gating_dim = 2 if only_position else 4
+    gating_threshold = kalman_filter.chi2inv95[gating_dim]  # 9.4877
+
+    measurements = np.asarray([detections[i].to_xyah()
+                               for i in detection_indices])
+    for row, track_idx in enumerate(track_indices):
+        track = tracks[track_idx]
+        gating_distance = kf.gating_distance(
+            track.mean, track.covariance, measurements, only_position)
+        cost_matrix[row, gating_distance >
+                    gating_threshold] = gated_cost  # 设置为inf
+    return cost_matrix
 ```
 
 **IOU匹配**(An intersection over union distance metric)<br>
@@ -356,6 +571,64 @@ def min_cost_matching(
 #### 卡尔曼滤波更新阶段
 对于每个匹配成功的track，用其对应的detection进行更新，并处理未匹配tracks和detections<br>
 根据匹配情况进行后续相应操作
+
+更新的公式
+```python
+def project(self, mean, covariance):
+    # R 测量过程中噪声的协方差
+    std = [
+        self._std_weight_position * mean[3],
+        self._std_weight_position * mean[3],
+        1e-1,
+        self._std_weight_position * mean[3]]
+
+    # 初始化噪声矩阵R
+    innovation_cov = np.diag(np.square(std))
+
+    # 将均值向量映射到检测空间，即Hx'
+    mean = np.dot(self._update_mat, mean)
+
+    # 将协方差矩阵映射到检测空间，即HP'H^T
+    covariance = np.linalg.multi_dot((
+        self._update_mat, covariance, self._update_mat.T))
+
+    return mean, covariance + innovation_cov
+
+def update(self, mean, covariance, measurement):
+    # 通过估计值和观测值估计最新结果
+
+    # 将均值和协方差映射到检测空间，得到 Hx' 和 S
+    projected_mean, projected_cov = self.project(mean, covariance)
+
+    # 矩阵分解
+    chol_factor, lower = scipy.linalg.cho_factor(
+        projected_cov, lower=True, check_finite=False)
+
+    # 计算卡尔曼增益K
+    kalman_gain = scipy.linalg.cho_solve(
+        (chol_factor, lower), np.dot(covariance, self._update_mat.T).T,
+        check_finite=False).T
+
+    # z - Hx'
+    innovation = measurement - projected_mean
+
+    # x = x' + Ky
+    new_mean = mean + np.dot(innovation, kalman_gain.T)
+
+    # P = (I - KH)P'
+    new_covariance = covariance - np.linalg.multi_dot((
+        kalman_gain, projected_cov, kalman_gain.T))
+    return new_mean, new_covariance
+```
+这个公式中，z是Detection的mean，不包含变化值，状态为[cx,cy,a,h]。H是测量矩阵，将Track的均值向量映射到检测空间。计算的y是Detection和Track的均值误差。
+
+R是目标检测器的噪声矩阵，是一个4x4的对角矩阵。对角线上的值分别为中心点两个坐标以及宽高的噪声。
+
+计算的是卡尔曼增益，是作用于衡量估计误差的权重。
+
+更新后的均值向量x。
+
+更新后的协方差矩阵。
 
 1. 对于matched组合，要用检测结果去更新相应tracker的参数
 ```python
@@ -468,6 +741,15 @@ def partial_fit(self, features, targets, active_targets):
     # 以dict的形式插入总库
     self.samples = {k: self.samples[k] for k in active_targets}
 ```
+
+### 类图
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/iiffneust4.png)
+
+DeepSort是核心类，调用其他模块，大体上可以分为三个模块：
+
+* ReID模块，用于提取表观特征，原论文中是生成了128维的embedding。
+* Track模块，轨迹类，用于保存一个Track的状态信息，是一个基本单位。
+* Tracker模块，Tracker模块掌握最核心的算法，卡尔曼滤波和匈牙利算法都是通过调用这个模块来完成的。
 
 ### 运行结果
 采用Faster R-CNN网络进行目标检测，检测的置信度阈值设置为0.3，λ=0,Amax=30。<br>
@@ -641,7 +923,8 @@ https://zhuanlan.zhihu.com/p/80764724<br>
 https://zhuanlan.zhihu.com/p/114349651<br>
 https://www.cnblogs.com/yanwei-li/p/8643446.html<br>
 https://blog.csdn.net/cdknight_happy/article/details/79731981<br>
-https://zhuanlan.zhihu.com/p/34142321
-https://zhuanlan.zhihu.com/p/131008921
-https://zhuanlan.zhihu.com/p/31921944
-https://zhuanlan.zhihu.com/p/126558285
+https://zhuanlan.zhihu.com/p/34142321<br>
+https://zhuanlan.zhihu.com/p/131008921<br>
+https://zhuanlan.zhihu.com/p/31921944<br>
+https://zhuanlan.zhihu.com/p/126558285<br>
+https://cloud.tencent.com/developer/article/1618058
