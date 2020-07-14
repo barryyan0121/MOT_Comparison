@@ -791,23 +791,46 @@ FairMOT是类似于CenterTrack的基于CenterNet的联合检测和跟踪的框�
 
 anchor-based的检测框架中存在anchor和特征的不对齐问题，所以这方面不如anchor-free框架，因而选择anchor-free算法——CenterNet，不过其用法并不是类似于CenterTrack，而是采用的Tracktor++的方式。
 
+### Object as Points
+算法框架如下：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/objectaspoints.png)
+
+图像经编码器-解码器网络输出两个任务，目标检测和ReID特征提取，检测部分输出候选目标中心点热图heatmap、目标包围框大小box size、目标中心相对原图实际位置的偏移量center offset。
+
+ReID特征提取部分则是输出所有候选目标中心点的128维ReID特征，所以检测部分结果出来，其对应的ReID特征就有了。
+
+作者称该算法为FairMOT，意即目标检测和ReID特征提取兼顾的多目标跟踪算法。
+
 ### Tracker++
 Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架，这类框架与MOTDT框架最大的不同在于，检测部分不仅仅用于前景和背景的进一步分类，还利用回归对目标进行了进一步修正，其核心在于利用跟踪框和观测框代替原有的RPN模块，从而得到真正的观测框，最后利用数据关联实现跟踪框和观测框的匹配。流程图如下：
 
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/v2-fb2ddc1ea3290991400cb76f424e8fc1_720w.jpg)
 
-原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构：
+原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构，这里提出要将hourglass结构改成多尺度融合的形式，最后通过两个分支完成检测和Re-ID任务的集成。
+
+### Training
+考虑到正负样本不均衡问题，作者采用了focal loss的形式：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/focal%20loss.png)
+
+其中M(x,y)表示的是heatmap在(x,y)处存在目标的概率，而对于box size和offset则采用L1 loss：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/heatmap.png)
+
+最后对于Re-ID分支而言，作者采用了identification式的分类框架，这里面的L就是不同的ID的one-hot表示，p就是网络预测的分类置信度。<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/identity.png)
+
+通常ReID问题中特征向量维度越大表现越好，但这需要大量的训练数据。在多目标跟踪的ReID问题中数据并不丰富，作者发现维度小一点其实更好，降低了过拟合的风险，还可以减少计算量。
 
 ## 目标检测(Object Detection)
 如何从图像中解析出可供计算机理解的信息，是机器视觉的中心问题。近年来，深度学习模型逐渐取代传统机器视觉方法而成为目标检测领域的主流算法。深度学习模型由于其强大的表示能力，加之数据量的积累和计算力的进步，成为机器视觉的热点研究方向。
 
 那么，如何理解一张图片？根据后续任务的需要，有三个主要的层次。
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/images/three_level.jpg)<br>
-一是分类（Classification）。分类即是将图像结构化为某一类别的信息，用事先确定好的类别(string)或实例ID来描述图片。这一任务是最简单、最基础的图像理解任务，也是深度学习模型最先取得突破和实现大规模应用的任务。其中，ImageNet是最权威的评测集，每年的ILSVRC催生了大量的优秀深度网络结构，为其他任务提供了基础。在应用领域，人脸、场景的识别等都可以归为分类任务。
+一是分类(Classification)。分类即是将图像结构化为某一类别的信息，用事先确定好的类别(string)或实例ID来描述图片。这一任务是最简单、最基础的图像理解任务，也是深度学习模型最先取得突破和实现大规模应用的任务。其中，ImageNet是最权威的评测集，每年的ILSVRC催生了大量的优秀深度网络结构，为其他任务提供了基础。在应用领域，人脸、场景的识别等都可以归为分类任务。
 
-二是检测（Detection）。分类任务关心整体，给出的是整张图片的内容描述，而检测则关注特定的物体目标，要求同时获得这一目标的类别信息和位置信息。相比分类，检测给出的是对图片前景和背景的理解，我们需要从背景中分离出感兴趣的目标，并确定这一目标的描述（类别和位置），因而，检测模型的输出是一个列表，列表的每一项使用一个数据组给出检出目标的类别和位置（常用矩形检测框的坐标表示）。
+二是检测(Detection)。分类任务关心整体，给出的是整张图片的内容描述，而检测则关注特定的物体目标，要求同时获得这一目标的类别信息和位置信息。相比分类，检测给出的是对图片前景和背景的理解，我们需要从背景中分离出感兴趣的目标，并确定这一目标的描述(类别和位置)，因而，检测模型的输出是一个列表，列表的每一项使用一个数据组给出检出目标的类别和位置(常用矩形检测框的坐标表示)。
 
-三是分割（Segmentation）。分割包括语义分割（semantic segmentation）和实例分割（instance segmentation），前者是对前背景分离的拓展，要求分离开具有不同语义的图像部分，而后者是检测任务的拓展，要求描述出目标的轮廓（相比检测框更为精细）。分割是对图像的像素级描述，它赋予每个像素类别（实例）意义，适用于理解要求较高的场景，如无人驾驶中对道路和非道路的分割。
+三是分割(Segmentation)。分割包括语义分割(semantic segmentation)和实例分割(instance segmentation)，前者是对前背景分离的拓展，要求分离开具有不同语义的图像部分，而后者是检测任务的拓展，要求描述出目标的轮廓(相比检测框更为精细)。分割是对图像的像素级描述，它赋予每个像素类别(实例)意义，适用于理解要求较高的场景，如无人驾驶中对道路和非道路的分割。
 
 目标检测，即为图像理解的中层次。
 
