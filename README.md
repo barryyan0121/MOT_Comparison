@@ -88,6 +88,8 @@ Frame 1：检测器又检测到了3个detections，对于Frame 0中的tracks，�
 在行人重识别数据集上离线训练残差网络模型。输出128维的归一化的特征。
 
 ### 代码解读
+论文中提供的代码是如下地址: https://github.com/nwojke/deep_sort
+
 按视频帧顺序处理，每一帧的处理流程如下:
 
 ![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/cri2dh3p5w.png)
