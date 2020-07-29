@@ -949,6 +949,13 @@ EfficientDet的调整策略总结如下：<br>
 一系列的EfficientDet网络都在精度、参数量、计算量、CPU速度以及GPU速度上完成了对之前SOTA方法的提升。在相同精度要求下，EfficientDet比YOLOv3少28倍的计算量，比RetinaNet少30倍的计算量，比Nas-FPN少19倍的计算量。此外，在刷SOTA结果时，单模型单尺度下EfficientDet-D7可以达到51.0 mAP，这比目前最好的结果还要高，同时参数量少了4倍，计算量少了9.3倍。
 
 ## 行人重识别(Re-ID)
+### 开源数据集
+https://bdd-data.berkeley.edu/<br>
+http://apolloscape.auto/car_instance.html<br>
+https://robotcar-dataset.robots.ox.ac.uk/<br>
+https://archive.org/details/comma-dataset<br>
+http://mi.eng.cam.ac.uk/research/projects/VideoRec/CamVid/<br>
+https://github.com/nutonomy/nuscenes-devkit<br>
 
 ## 参考资源
 https://zhuanlan.zhihu.com/p/59148865<br>
