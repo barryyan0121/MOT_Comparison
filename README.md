@@ -940,6 +940,67 @@ Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架�
 通常ReID问题中特征向量维度越大表现越好，但这需要大量的训练数据。在多目标跟踪的ReID问题中数据并不丰富，作者发现维度小一点其实更好，降低了过拟合的风险，还可以减少计算量。
 
 ### 网络结构
+文中网络结构分3大部分：
+网络结构在：.\src\lib\models\networks\pose_dla_dcn.py中。
+#### Encoder-decoder部分
+网络中，这是backbone network部分，主干网络为DLA-34(34层的DLA),最终input(HxW)->output(H/4xW/4)
+
+Encoder部分(base/DLA)：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/identity.png)
+
+其中：Tree结构为：conv1->bn1->relu->conv2->bn2;<br>
+root结构为：conv->bn->relu;<br>
+downSample结构为：Maxpool2d;<br>
+project结构为：conv->bn<br>
+project结构为：conv->bn<br>
+Encoder部分的网络结构类似金字塔结构（或者树形结构），实现不同block，不同深度之间的特征融合。
+
+decoder 部分(dlA-up/DLAup)：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/identity.png)
+
+decoder部分实际就是反卷积上采样的过程，实现输出为原图尺寸的1/4。<br>
+其中：Proj结构为：BN->Relu->conv;<br>
+Up结构为：convTranspose2d;<br>
+node结构为：BN->Relu->conv;
+
+### Detection + Re-ID
+FairMOT有两类分支，一类是用来预测，和CenterNet一致，一类的embedding。
+
+Encoder-decoder部分之后，并行的接入4部分，分别为：{hm,wh,reg,id}。
+* center results：1×H×W
+* center offset results：2×H×W
+* bbox size results：2×H×W
+* dense embedding map：D×H×W
+
+其中，这四部分结构均为：con2d(3x3卷积)->Relu->con2d(1x1卷积)，每个部分为一个任务，继而每个任务，需要加一个loss约束。
+
+embedding特征图的厚度是D。这种分支的形式就联合了检测模型和Re-ID模型，将两者合并为一个。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/diagram.png)
+
+训练的损失函数有三个<br>
+还是分为centernet的损失和embedding的损失：
+
+* Hm:采用基于热力图定位目标中心点位置，实现anchor-free。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191428634.png)<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191404590.png)
+
+其中centernet的center的损失和cornernet是一致的。
+
+* Wh：负责预测目标的长宽尺寸。reg负责预测长宽偏移尺寸，引入这个任务的目的是为了更精确的定位目标位置。将这两个任务的loss写在一起
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191415547.png)
+
+offset和xy的损失就是L1。
+
+* Id:重识别的过程。相当于分类任务，判断目标是哪一类（跟踪任务中，同一个目标为一类）
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191420349.png)
+
+embedding的损失是交叉熵。
 
 ### 运行结果
 #### MOT15
