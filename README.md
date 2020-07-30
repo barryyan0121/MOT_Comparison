@@ -940,6 +940,32 @@ Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架�
 通常ReID问题中特征向量维度越大表现越好，但这需要大量的训练数据。在多目标跟踪的ReID问题中数据并不丰富，作者发现维度小一点其实更好，降低了过拟合的风险，还可以减少计算量。
 
 ### 网络结构
+FairMOT有两类分支，一类是用来预测，和CenterNet一致，一类的embedding，加起来一共有四个：
+
+* center results：1×H×W
+* center offset results：2×H×W
+* bbox size results：2×H×W
+* dense embedding map：D×H×W
+
+embedding特征图的厚度是D。这种分支的形式就联合了检测模型和Re-ID模型，将两者合并为一个。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/diagram.png)
+
+训练的损失函数有三个<br>
+还是分为centernet的损失和embedding的损失：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191428634.png)<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191404590.png)
+
+其中centernet的center的损失和cornernet是一致的。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191415547.png)
+
+offset和xy的损失就是L1。
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/fairmot/images/20200626191420349.png)
+
+embedding的损失是交叉熵。
 
 ### 运行结果
 #### MOT15
