@@ -784,54 +784,6 @@ MOT16-14共计750帧数，耗时43.96秒，平均每秒处理17.1帧，生成视
 
 第四点，DeepSORT里给马氏距离也就是运动模型设置的系数为0，也就是说在相机运动的情况下线性速度模型并不准确，所以可能可以找到更好的运动模型。
 
-## FairMOT (A simple baseline for one-shot Multi-Object Tracking)
-
-### 导语
-FairMOT是类似于CenterTrack的基于CenterNet的联合检测和跟踪的框架，同时类似却又不同于JDE的框架，它探讨了检测框架与ReID特征任务的集成问题，这类框架被称为为one-shot MOT框架。
-
-anchor-based的检测框架中存在anchor和特征的不对齐问题，所以这方面不如anchor-free框架，因而选择anchor-free算法——CenterNet，不过其用法并不是类似于CenterTrack，而是采用的Tracktor++的方式。
-
-### Object as Points
-算法框架如下：
-
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/objectaspoints.png)
-
-图像经编码器-解码器网络输出两个任务，目标检测和ReID特征提取，检测部分输出候选目标中心点热图heatmap、目标包围框大小box size、目标中心相对原图实际位置的偏移量center offset。
-
-ReID特征提取部分则是输出所有候选目标中心点的128维ReID特征，所以检测部分结果出来，其对应的ReID特征就有了。
-
-作者称该算法为FairMOT，意即目标检测和ReID特征提取兼顾的多目标跟踪算法。
-
-### Tracker++
-Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架，这类框架与MOTDT框架最大的不同在于，检测部分不仅仅用于前景和背景的进一步分类，还利用回归对目标进行了进一步修正，其核心在于利用跟踪框和观测框代替原有的RPN模块，从而得到真正的观测框，最后利用数据关联实现跟踪框和观测框的匹配。流程图如下：
-
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/v2-fb2ddc1ea3290991400cb76f424e8fc1_720w.jpg)
-
-原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构，这里提出要将hourglass结构改成多尺度融合的形式，最后通过两个分支完成检测和Re-ID任务的集成。
-
-### Training
-考虑到正负样本不均衡问题，作者采用了focal loss的形式：<br>
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/focal%20loss.png)
-
-其中M(x,y)表示的是heatmap在(x,y)处存在目标的概率，而对于box size和offset则采用L1 loss：<br>
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/heatmap.png)
-
-最后对于Re-ID分支而言，作者采用了identification式的分类框架，这里面的L就是不同的ID的one-hot表示，p就是网络预测的分类置信度。<br>
-![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/identity.png)
-
-通常ReID问题中特征向量维度越大表现越好，但这需要大量的训练数据。在多目标跟踪的ReID问题中数据并不丰富，作者发现维度小一点其实更好，降低了过拟合的风险，还可以减少计算量。
-
-### 运行结果
-#### MOT15
-2055帧数 111.32秒 FPS：18.46 HRNetV2-W18<br>
-2055帧数 116.03秒 FPS：17.71 DLA-34 baseline model
-#### MOT17
-5316帧数 293.76秒 FPS：18.10 HRNetV2-W18<br>
-5316帧数 347.14秒 FPS：15.31 DLA-34 baseline model
-#### MOT20
-8931帧数 526.99秒 FPS：16.95 HRNetV2-W18<br>
-8931帧数 116.03秒 FPS：17.71 DLA-34 baseline model
-
 ## 目标检测(Object Detection)
 如何从图像中解析出可供计算机理解的信息，是机器视觉的中心问题。近年来，深度学习模型逐渐取代传统机器视觉方法而成为目标检测领域的主流算法。深度学习模型由于其强大的表示能力，加之数据量的积累和计算力的进步，成为机器视觉的热点研究方向。
 
@@ -948,6 +900,58 @@ EfficientDet的调整策略总结如下：<br>
 
 一系列的EfficientDet网络都在精度、参数量、计算量、CPU速度以及GPU速度上完成了对之前SOTA方法的提升。在相同精度要求下，EfficientDet比YOLOv3少28倍的计算量，比RetinaNet少30倍的计算量，比Nas-FPN少19倍的计算量。此外，在刷SOTA结果时，单模型单尺度下EfficientDet-D7可以达到51.0 mAP，这比目前最好的结果还要高，同时参数量少了4倍，计算量少了9.3倍。
 
+## FairMOT (A simple baseline for one-shot Multi-Object Tracking)
+
+### 导语
+FairMOT是类似于CenterTrack的基于CenterNet的联合检测和跟踪的框架，同时类似却又不同于JDE的框架，它探讨了检测框架与ReID特征任务的集成问题，这类框架被称为为one-shot MOT框架。
+
+anchor-based的检测框架中存在anchor和特征的不对齐问题，所以这方面不如anchor-free框架，因而选择anchor-free算法——CenterNet，不过其用法并不是类似于CenterTrack，而是采用的Tracktor++的方式。
+
+FairMOT是一个online的多目标跟踪(MOT)算法，基于TBD(Traking-by-Detection)的策略，FairMOT主要就是基于JDE做的改进，可以简单的理解为，FairMOT是将JDE的YOLOv3的主干，改成了CenterNet，也就是将检测的方法由Anchor-base换成了Anchor-free，然后同样在已有检测模型上加了了embedding分支，模型输出检测的结果和embedding，提供给后续的association使用。
+
+### Object as Points
+算法框架如下：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/objectaspoints.png)
+
+图像经编码器-解码器网络输出两个任务，目标检测和ReID特征提取，检测部分输出候选目标中心点热图heatmap、目标包围框大小box size、目标中心相对原图实际位置的偏移量center offset。
+
+ReID特征提取部分则是输出所有候选目标中心点的128维ReID特征，所以检测部分结果出来，其对应的ReID特征就有了。
+
+作者称该算法为FairMOT，意即目标检测和ReID特征提取兼顾的多目标跟踪算法。
+
+### Tracker++
+Tracktor++算法是去年出现的一类全新的联合检测和跟踪的框架，这类框架与MOTDT框架最大的不同在于，检测部分不仅仅用于前景和背景的进一步分类，还利用回归对目标进行了进一步修正，其核心在于利用跟踪框和观测框代替原有的RPN模块，从而得到真正的观测框，最后利用数据关联实现跟踪框和观测框的匹配。流程图如下：
+
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/v2-fb2ddc1ea3290991400cb76f424e8fc1_720w.jpg)
+
+原始的anchor-free框架的大多数backbone都是采用了骨骼关键点中的hourglass结构，这里提出要将hourglass结构改成多尺度融合的形式，最后通过两个分支完成检测和Re-ID任务的集成。
+
+### Training
+考虑到正负样本不均衡问题，作者采用了focal loss的形式：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/focal%20loss.png)
+
+其中M(x,y)表示的是heatmap在(x,y)处存在目标的概率，而对于box size和offset则采用L1 loss：<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/heatmap.png)
+
+最后对于Re-ID分支而言，作者采用了identification式的分类框架，这里面的L就是不同的ID的one-hot表示，p就是网络预测的分类置信度。<br>
+![Image of pic](https://github.com/barryyan0121/MOT_Comparison/blob/master/object%20detection/demo/identity.png)
+
+通常ReID问题中特征向量维度越大表现越好，但这需要大量的训练数据。在多目标跟踪的ReID问题中数据并不丰富，作者发现维度小一点其实更好，降低了过拟合的风险，还可以减少计算量。
+
+### 网络结构
+
+### 运行结果
+#### MOT15
+2055帧数 111.32秒 FPS：18.46 HRNetV2-W18<br>
+2055帧数 116.03秒 FPS：17.71 DLA-34 baseline model
+#### MOT17
+5316帧数 293.76秒 FPS：18.10 HRNetV2-W18<br>
+5316帧数 347.14秒 FPS：15.31 DLA-34 baseline model
+#### MOT20
+8931帧数 526.99秒 FPS：16.95 HRNetV2-W18<br>
+8931帧数 116.03秒 FPS：17.71 DLA-34 baseline model
+
 ## 行人重识别(Re-ID)
 ### 开源数据集
 https://bdd-data.berkeley.edu/<br>
@@ -968,4 +972,5 @@ https://zhuanlan.zhihu.com/p/34142321<br>
 https://zhuanlan.zhihu.com/p/131008921<br>
 https://zhuanlan.zhihu.com/p/31921944<br>
 https://zhuanlan.zhihu.com/p/126558285<br>
-https://cloud.tencent.com/developer/article/1618058
+https://cloud.tencent.com/developer/article/1618058<br>
+https://blog.csdn.net/qq583083658/article/details/86496563
