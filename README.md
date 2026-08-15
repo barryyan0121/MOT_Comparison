@@ -1,3 +1,5 @@
+
+
 # 多目标追踪学习报告
 ## MOT介绍
 目标跟踪是机器视觉中一类被广为研究的重要问题，分为单目标跟踪与多目标跟踪。前者跟踪视频画面中的单个目标，后者则同时跟踪视频画面中的多个目标，得到这些目标的运动轨迹。
@@ -111,7 +113,7 @@ def create_detections(detection_mat, frame_idx, min_height=0):
         detection_list.append(Detection(bbox, confidence, feature))
     return detection_list
 ```
-detection_mat : 格式为ndarray的检测矩阵。该矩阵的前十行均为标准MOTChallenge检测格式，剩余列项存储着每个检测目标的特征向量。<br>
+detection_mat : 格式为ndarray的检测矩阵。该矩阵的前十列均为标准MOTChallenge检测格式，剩余列项存储着每个检测目标的特征向量。<br>
 frame_idx : 格式为int的帧数索引。<br>
 min_height : 格式为int的最小检测边界框高度。比该值小的检测数据会被丢弃。
 
